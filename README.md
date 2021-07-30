@@ -1,1 +1,1 @@
-# capable_camera_firmware
+# Open Dashcam firmware
