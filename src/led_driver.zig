@@ -65,7 +65,7 @@ pub const LP50xx = struct {
     }
 
     pub fn set(self: LP50xx, index: u8, color: [3]u8) void {
-        var buffer = [_]u8{ 0x0B + index * 3, color[2], color[1], color[0] };
+        var buffer = [_]u8{ 0x0B + index * 3, color[0], color[1], color[2] };
         _ = i2c.write_block(self.fd, self.addr, &buffer);
     }
 

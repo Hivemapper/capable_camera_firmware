@@ -17,6 +17,20 @@ const fs = std.fs;
 const mem = std.mem;
 const print = std.debug.print;
 
+const web = @import("zhp");
+
+pub const Handler = struct {
+    pub fn get(self: *Handler, request: *web.Request, response: *web.Response) !void {
+        try response.headers.append("Content-Type", "application/json");
+
+        if (try stat()) |data| {
+            try std.json.stringify(data, std.json.StringifyOptions{
+                .whitespace = .{ .indent = .{ .Space = 2 } },
+            }, response.stream);
+        }
+    }
+};
+
 const c = @cImport({
     @cInclude("unistd.h");
     @cInclude("sys/types.h");

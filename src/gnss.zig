@@ -17,11 +17,13 @@ const print = std.debug.print;
 const mem = std.mem;
 
 const spi = @import("bus/spi.zig");
+const bounded_array = @import("bounded_array.zig");
 
-const MAX_PAYLOAD_SIZE = 256;
+const MAX_PAYLOAD_SIZE = 512 * 2;
 const SPI_BUFFER_SIZE = 128;
 
 const MAX_WAIT = 250;
+const SLEEP = std.time.ns_per_ms * 10;
 
 //Registers
 const UBX_SYNCH_1: u8 = 0xB5;
@@ -81,6 +83,21 @@ const UBX_CFG_VALDEL: u8 = 0x8C; //Used for config of higher version u-blox modu
 const UBX_CFG_VALGET: u8 = 0x8B; //Used for config of higher version u-blox modules (ie protocol v27 and above). Configuration Items
 const UBX_CFG_VALSET: u8 = 0x8A; //Used for config of higher version u-blox modules (ie protocol v27 and above). Sets values corresponding to provided key-value pairs/ provided key-value pairs within a transaction.
 
+// Note that key values here are in little endian order, as that is how they should be sent over the wire
+const CFG_NAVSPG_SIGATTCOMP: [4]u8 = [_]u8{ 0xd6, 0x00, 0x11, 0x20 }; // Permanently attenuated signal compensation mode
+const CFG_NAVSPG_DYNMODEL: [4]u8 = [_]u8{ 0x21, 0x00, 0x11, 0x20 };
+
+const CFG_NAVSPG_DYNMODEL_MODE = enum { PORT, STAT, RED, AUTOMOT, SEA, AIR1, AIR2 };
+
+const CFG_RST_MODE = enum(u8) {
+    HARDWARE = 0x00,
+    SOFTWARE = 0x01,
+    GNSS_RESET = 0x02,
+    SHUTDOWN_RESET = 0x04,
+    GNSS_STOP = 0x08,
+    GNSS_START = 0x09,
+};
+
 //Class: NAV
 //The following are used to configure the NAV UBX messages (navigation results messages). Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 35-36)
 const UBX_NAV_ATT: u8 = 0x05; //Vehicle "Attitude" Solution
@@ -115,6 +132,14 @@ const UBX_NAV_VELNED: u8 = 0x12; //Velocity Solution in NED
 const UBX_HNR_ATT: u8 = 0x01; //HNR Attitude
 const UBX_HNR_INS: u8 = 0x02; //HNR Vehicle Dynamics
 const UBX_HNR_PVT: u8 = 0x00; //HNR PVT
+
+// Class: MON
+// Used to report the receiver status, such as hardware status or I/O subsystem statistics
+const UBX_MON_GNSS: u8 = 0x28;
+const UBX_MON_RF: u8 = 0x38;
+const UBX_MON_SPAN: u8 = 0x31;
+const UBX_MON_TEMP: u8 = 0x0E;
+const UBX_MON_VER: u8 = 0x04;
 
 //Class: ESF
 // The following constants are used to get External Sensor Measurements and Status
@@ -187,6 +212,31 @@ const ubxPacket = extern struct {
     class_id_match: UBX_Packet_Validity = UBX_Packet_Validity.NOT_DEFINED, // Goes from NOT_DEFINED to VALID or NOT_VALID when the Class and ID match the requestedClass and requestedID
 };
 
+const AntennaState = extern enum { INIT, UNK, OK, SHORT, OPEN };
+const AntennaPower = extern enum { OFF, ON, UNK };
+const RFInfo = struct {
+    block_id: u8,
+    flags: u8,
+    antenna_state: AntennaState,
+    antenna_power: AntennaPower,
+    post_status: u32,
+    noise: u16,
+    agc: u16,
+    jam: u8,
+    i_imbalance: i8,
+    i_magnitude: u8,
+    q_imbalance: i8,
+    q_magnitude: u8,
+};
+
+const RFSpan = struct {
+    spectrum: [256]u8 = [_]u8{0} ** 256,
+    span: u32,
+    resolution: u32,
+    center: u32,
+    pga: u8,
+};
+
 const TimeData = struct {
     epoch: u32,
     year: u16,
@@ -220,7 +270,7 @@ const VelocityData = struct {
     speed_accuracy: u32,
 };
 
-const UBX_NAV_PVT_data = struct {
+const PVTData = struct {
     received_at: i64,
     time: TimeData,
     position: PositionData,
@@ -232,9 +282,10 @@ const UBX_NAV_PVT_data = struct {
     flags3: u8,
 };
 
-const NAV_PVT = struct {
+pub const PVT = struct {
     age: i64,
     timestamp: [24]u8,
+    time: TimeData,
     longitude: f64,
     latitude: f64,
     height: f32,
@@ -244,6 +295,31 @@ const NAV_PVT = struct {
     satellite_count: u8,
     fix_type: u8,
     flags: [3]u8,
+    dop: f32,
+};
+
+const GNSSID = extern enum { GPS, SBAS, GAL, BDS, IMES, QZSS, GLO, NONE };
+const SATQUAL = extern enum { NONE, SEARCH, ACQ, DETECT, LOCK, SYNCA, SYNCB, SYNCC };
+const SATHEALTH = extern enum { UNK, GOOD, BAD };
+
+pub const SatDetail = struct {
+    gnss: GNSSID = GNSSID.NONE,
+    id: u8 = 0,
+    cno: u8 = 0,
+    elev: i8 = 0,
+    azim: i16 = 0,
+    pr_res: i16 = 0,
+    quality: SATQUAL = SATQUAL.NONE,
+    used: bool = false,
+    health: SATHEALTH = SATHEALTH.UNK,
+};
+
+const MAX_SAT_INFO_COUNT: u8 = 64;
+pub const SatInfo = struct {
+    itow: u32,
+    count: u8,
+    cno_max: u8 = 0,
+    satellites: bounded_array.BoundedArray(SatDetail, MAX_SAT_INFO_COUNT),
 };
 
 pub fn init(handle: spi.SPI) GNSS {
@@ -375,8 +451,7 @@ fn get_payload_size(class: u8, id: u8) u16 {
     return size;
 }
 
-fn extract(msg: *ubxPacket, comptime T: type, idx: u8) T {
-    // return @intCast(u16, msg.payload[idx]) + @intCast(u16, msg.payload[idx + 1] << 8);
+fn extract(msg: *ubxPacket, comptime T: type, idx: u16) T {
     return mem.readIntSliceLittle(T, msg.payload[idx .. idx + @divExact(@typeInfo(T).Int.bits, 8)]);
 }
 
@@ -418,7 +493,10 @@ pub const GNSS = struct {
     max_wait: u16 = MAX_WAIT,
     cur_wait: u16 = MAX_WAIT,
 
-    _last_nav_pvt: ?UBX_NAV_PVT_data = null,
+    _last_nav_pvt: ?PVTData = null,
+    _last_nav_sat: ?SatInfo = null,
+    _last_mon_rf: ?RFInfo = null,
+    _last_mon_span: ?RFSpan = null,
 
     fn send_command(self: *GNSS, packet: *ubxPacket) UBX_Status {
         calc_checksum(packet);
@@ -502,7 +580,7 @@ pub const GNSS = struct {
                 return UBX_Status.CRC_FAIL;
             }
 
-            std.time.sleep(std.time.ns_per_ms);
+            std.time.sleep(SLEEP);
         }
 
         self.cur_wait = self.max_wait;
@@ -634,7 +712,7 @@ pub const GNSS = struct {
                 // then the ACK has not yet been received and we should keep waiting for it
             }
 
-            std.time.sleep(std.time.ns_per_ms);
+            std.time.sleep(SLEEP);
         }
 
         self.cur_wait = self.max_wait;
@@ -683,12 +761,16 @@ pub const GNSS = struct {
                 self.active_buffer = PacketBuffer.BUF;
             } else if (incoming == '$') {
                 print("Start of NMEA packet\n", .{});
-                self.message_type = SentenceTypes.NMEA;
+                // self.message_type = SentenceTypes.NMEA;
+                self.message_type = SentenceTypes.NONE;
                 self.frame_counter = 0;
             } else if (incoming == 0xD3) {
                 print("Start of RTCM packet\n", .{});
-                self.message_type = SentenceTypes.RTCM;
+                // self.message_type = SentenceTypes.RTCM;
+                self.message_type = SentenceTypes.NONE;
                 self.frame_counter = 0;
+            } else {
+                // This character is unknown or we missed the previous start of a sentence
             }
         }
 
@@ -870,20 +952,20 @@ pub const GNSS = struct {
                 // If this is an ACK then let's check if the class and ID match the requestedClass and requestedID
                 else if ((packet.cls == UBX_CLASS_ACK) and (packet.id == UBX_ACK_ACK) and (packet.payload[0] == requested_class) and (packet.payload[1] == requested_id)) {
                     packet.class_id_match = UBX_Packet_Validity.VALID;
-                    print("process_ubx :  ACK | Class {} ID {}\n", .{ packet.payload[0], packet.payload[1] });
+                    // print("gnss process_ubx :  ACK | Class {} ID {}\n", .{ packet.payload[0], packet.payload[1] });
                 }
 
                 // If this is an NACK then let's check if the class and ID match the requestedClass and requestedID
                 else if ((packet.cls == UBX_CLASS_ACK) and (packet.id == UBX_ACK_NACK) and (packet.payload[0] == requested_class) and (packet.payload[1] == requested_id)) {
                     packet.class_id_match = UBX_Packet_Validity.NOT_ACKNOWLEDGED;
-                    print("process_ubx : NACK | Class {} ID {}\n", .{ packet.payload[0], packet.payload[1] });
+                    print("gnss process_ubx : NACK | Class {} ID {}\n", .{ packet.payload[0], packet.payload[1] });
                 }
 
                 // This is not an ACK and we do not have a complete class and ID match
                 // So let's check for an "automatic" message arriving
                 else if (self.check_automatic(packet.cls, packet.id)) {
                     // This isn't the message we are looking for...
-                    print("process_ubx : automatic | Class {} ID {}\n", .{ packet.cls, packet.id });
+                    print("gnss process_ubx : automatic | Class {} ID {}\n", .{ packet.cls, packet.id });
                 }
 
                 if (self.ignore_payload == false) {
@@ -895,7 +977,7 @@ pub const GNSS = struct {
                 packet.valid = UBX_Packet_Validity.NOT_VALID;
                 packet.class_id_match = UBX_Packet_Validity.NOT_VALID;
 
-                print("process_ubx : checksum failed | {} {} vs {} {}\n", .{ packet.checksum_a, packet.checksum_b, self.cur_checksum_a, self.cur_checksum_b });
+                print("gnss process_ubx : checksum failed | {} {} vs {} {}\n", .{ packet.checksum_a, packet.checksum_b, self.cur_checksum_a, self.cur_checksum_b });
             }
         } else {
             // Load this byte into the payload array
@@ -921,7 +1003,7 @@ pub const GNSS = struct {
 
         if (overrun or (packet.counter == max_payload_size + 6) and self.ignore_payload == false) {
             self.message_type = SentenceTypes.NONE;
-            print("process_ubx : overrun | buffer {} size {}\n", .{ self.active_buffer, max_payload_size });
+            print("gnss process_ubx : overrun | buffer {} size {}\n", .{ self.active_buffer, max_payload_size });
         }
 
         // if (incoming < 16) {
@@ -939,12 +1021,47 @@ pub const GNSS = struct {
         switch (packet.cls) {
             UBX_CLASS_ACK => return,
             UBX_CLASS_NAV => self.process_nav_packet(packet),
-            // UBX_CLASS_RXM => self.process_rxm_packet(packet),
+            UBX_CLASS_MON => self.process_mon_packet(packet),
             UBX_CLASS_CFG => self.process_cfg_packet(packet),
             // UBX_CLASS_TIM => self.process_tim_packet(packet),
             // UBX_CLASS_ESF => self.process_esf_packet(packet),
             // UBX_CLASS_HNR => self.process_hnr_packet(packet),
-            else => print("process_packet : unknown class {}\n", .{packet.cls}),
+            else => print("gnss process_packet : unknown class {}\n", .{packet.cls}),
+        }
+    }
+
+    fn process_mon_packet(self: *GNSS, packet: *ubxPacket) void {
+        switch (packet.id) {
+            UBX_MON_RF => {
+                const data = RFInfo{
+                    .block_id = extract(packet, u8, 4),
+                    .flags = extract(packet, u8, 5),
+                    .antenna_state = @intToEnum(AntennaState, extract(packet, u8, 6)),
+                    .antenna_power = @intToEnum(AntennaPower, extract(packet, u8, 7)),
+                    .post_status = extract(packet, u32, 8),
+                    .noise = extract(packet, u16, 16),
+                    .agc = extract(packet, u16, 18),
+                    .jam = extract(packet, u8, 20),
+                    .i_imbalance = extract(packet, i8, 21),
+                    .i_magnitude = extract(packet, u8, 22),
+                    .q_imbalance = extract(packet, i8, 23),
+                    .q_magnitude = extract(packet, u8, 24),
+                };
+
+                self._last_mon_rf = data;
+            },
+            UBX_MON_SPAN => {
+                var data = RFSpan{
+                    .span = extract(packet, u32, 260),
+                    .resolution = extract(packet, u32, 264),
+                    .center = extract(packet, u32, 268),
+                    .pga = extract(packet, u8, 272),
+                };
+                std.mem.copy(u8, data.spectrum[0..], packet.payload[4..260]);
+
+                self._last_mon_span = data;
+            },
+            else => print("gnss process_mon_packet : unknown id {}\n", .{packet.id}),
         }
     }
 
@@ -952,7 +1069,7 @@ pub const GNSS = struct {
         switch (packet.id) {
             UBX_NAV_PVT => {
                 if (packet.len == get_payload_size(packet.cls, packet.id)) {
-                    const pvt = UBX_NAV_PVT_data{
+                    const pvt = PVTData{
                         .received_at = std.time.milliTimestamp(),
                         .time = TimeData{
                             .epoch = extract(packet, u32, 0),
@@ -992,17 +1109,47 @@ pub const GNSS = struct {
                     };
 
                     self._last_nav_pvt = pvt;
-
-                    // print("nav_packet TIME {any}\n", .{pvt.time});
-                    // print("           POS  {any}\n", .{pvt.position});
-                    // print("           VEL  {any}\n", .{pvt.velocity});
-                    // print("           SAT  {} FIX {}\n", .{ pvt.satellite_count, pvt.fix_type });
-                    // print("           FLAG {} {} {}\n", .{ pvt.flags1, pvt.flags2, pvt.flags3 });
                 } else {
-                    print("nav_packet : incorrect length for PVT : {}\n", .{packet.len});
+                    print("gnss nav_packet : incorrect length for PVT : {}\n", .{packet.len});
                 }
             },
-            else => print("process_nav_packet : unknown id {}\n", .{packet.id}),
+            UBX_NAV_SAT => {
+                const count: u8 = extract(packet, u8, 5);
+
+                var satellites = bounded_array.BoundedArray(SatDetail, MAX_SAT_INFO_COUNT).init(count) catch |err| {
+                    std.log.err("GNSS | could not created satellite defailt BoundedArray : {}", .{err});
+                    return;
+                };
+
+                var data = SatInfo{ .itow = extract(packet, u32, 0), .count = count, .satellites = satellites };
+                var idx: u16 = 0;
+
+                while (idx < data.count and idx < MAX_SAT_INFO_COUNT) {
+                    const loc = idx * 12;
+                    const flag: u32 = extract(packet, u32, loc + 16);
+                    const detail = SatDetail{
+                        .gnss = @intToEnum(GNSSID, extract(packet, u8, 8 + idx * 12)),
+                        .id = extract(packet, u8, loc + 9),
+                        .cno = extract(packet, u8, loc + 10),
+                        .elev = extract(packet, i8, loc + 11),
+                        .azim = extract(packet, i16, loc + 12),
+                        .pr_res = extract(packet, i16, loc + 14),
+                        .quality = @intToEnum(SATQUAL, @intCast(c_int, flag & 0b111)),
+                        .used = (flag >> 3) & 0b1 == 0b1,
+                        .health = @intToEnum(SATHEALTH, @intCast(c_int, (flag >> 4) & 0b11)),
+                    };
+
+                    data.satellites.set(idx, detail);
+
+                    if (data.cno_max < detail.cno) {
+                        data.cno_max = detail.cno;
+                    }
+
+                    idx += 1;
+                }
+                self._last_nav_sat = data;
+            },
+            else => print("gnss process_nav_packet : unknown id {}\n", .{packet.id}),
         }
     }
 
@@ -1011,7 +1158,7 @@ pub const GNSS = struct {
             const measure_rate = extract(packet, u16, 0);
             const nav_rate = extract(packet, u16, 2);
             const time_ref = extract(packet, u16, 4);
-            print("cfg_packet : measure rate {} nav rate {} time ref {}\n", .{ measure_rate, nav_rate, time_ref });
+            print("gnss CFG_RATE : measure_rate {} nav_rate {} time_ref {}\n", .{ measure_rate, nav_rate, time_ref });
         }
     }
 
@@ -1093,11 +1240,11 @@ pub const GNSS = struct {
         self.packet_cfg.payload[1] = UBX_NAV_PVT;
         self.packet_cfg.payload[2] = rate; // rate relative to navigation freq.
 
-        print("set_auto_pvt_rate({})\n", .{rate});
+        print("gnss set_auto_pvt_rate({})\n", .{rate});
         const value = self.send_command(&self.packet_cfg);
 
         if (value == UBX_Status.DATA_SENT) {
-            print("  ack\n", .{});
+            print("gnss ack\n", .{});
         }
     }
 
@@ -1117,23 +1264,25 @@ pub const GNSS = struct {
         self.max_wait = wait;
     }
 
-    pub fn get_pvt(self: *GNSS) bool {
+    pub fn poll_pvt(self: *GNSS) bool {
         self.packet_cfg.cls = UBX_CLASS_NAV;
         self.packet_cfg.id = UBX_NAV_PVT;
         self.packet_cfg.len = 0;
         self.packet_cfg.starting_spot = 0;
 
-        // print("get_pvt()\n", .{});
+        // print("poll_pvt()\n", .{});
         const value = self.send_command(&self.packet_cfg);
-        // print("get_pvt() -> {}\n", .{value});
+        // print("poll_pvt() -> {}\n", .{value});
         return (value == UBX_Status.DATA_RECEIVED);
     }
 
-    pub fn last_nav_pvt_data(self: *GNSS) ?UBX_NAV_PVT_data {
+    pub fn last_nav_pvt_data(self: *GNSS) ?PVTData {
         return self._last_nav_pvt;
     }
 
-    pub fn last_nav_pvt(self: *GNSS) ?NAV_PVT {
+    // TODO : cache creation of the PVT struct, except for the age field --
+    // that should always be updated when the method is called
+    pub fn last_nav_pvt(self: *GNSS) ?PVT {
         if (self.last_nav_pvt_data()) |pvt| {
             var timestamp: [24]u8 = undefined;
             _ = std.fmt.bufPrint(&timestamp, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>6.3}Z", .{
@@ -1145,9 +1294,10 @@ pub const GNSS = struct {
                 @intToFloat(f64, pvt.time.second) + @intToFloat(f64, pvt.time.nanosecond) * 1e-9,
             }) catch unreachable;
 
-            return NAV_PVT{
+            return PVT{
                 .age = std.time.milliTimestamp() - pvt.received_at,
                 .timestamp = timestamp,
+                .time = pvt.time,
 
                 .longitude = @intToFloat(f64, pvt.position.longitude) * 1e-7,
                 .latitude = @intToFloat(f64, pvt.position.latitude) * 1e-7,
@@ -1163,9 +1313,101 @@ pub const GNSS = struct {
                 .satellite_count = pvt.satellite_count,
                 .flags = [_]u8{ pvt.flags1, pvt.flags2, pvt.flags3 },
                 .fix_type = pvt.fix_type,
+                .dop = @intToFloat(f32, pvt.position.geometric_dilution) * 1e-2,
             };
         }
         return null;
+    }
+
+    pub fn get_mon_rf(self: *GNSS) void {
+        self.packet_cfg.cls = UBX_CLASS_MON;
+        self.packet_cfg.id = UBX_MON_RF;
+        self.packet_cfg.len = 0;
+        self.packet_cfg.starting_spot = 0;
+
+        const value = self.send_command(&self.packet_cfg);
+
+        if (value == UBX_Status.DATA_RECEIVED) {
+            while (self._last_mon_rf == null) {
+                std.time.sleep(SLEEP);
+            }
+
+            print("{any}\n", .{self._last_mon_rf});
+            self._last_mon_rf = null;
+        } else {
+            print("get_mon_rf() -> {}\n", .{value});
+        }
+    }
+
+    pub fn get_mon_span(self: *GNSS) void {
+        self.packet_cfg.cls = UBX_CLASS_MON;
+        self.packet_cfg.id = UBX_MON_SPAN;
+        self.packet_cfg.len = 0;
+        self.packet_cfg.starting_spot = 0;
+
+        const value = self.send_command(&self.packet_cfg);
+
+        if (value == UBX_Status.DATA_RECEIVED) {
+            while (self._last_mon_span == null) {
+                std.time.sleep(SLEEP);
+            }
+
+            print("{any}\n", .{self._last_mon_span});
+            self._last_mon_span = null;
+        } else {
+            print("get_mon_span() -> {}\n", .{value});
+        }
+    }
+
+    pub fn get_nav_sat(self: *GNSS) void {
+        self.packet_cfg.cls = UBX_CLASS_NAV;
+        self.packet_cfg.id = UBX_NAV_SAT;
+        self.packet_cfg.len = 0;
+        self.packet_cfg.starting_spot = 0;
+
+        const value = self.send_command(&self.packet_cfg);
+
+        if (value == UBX_Status.DATA_RECEIVED) {
+            while (self._last_nav_sat == null) {
+                std.time.sleep(SLEEP);
+            }
+
+            if (self._last_nav_sat) |info| {
+                print("SatInfo{{ .itow = {}, .count = {}, .cno_max = {}}}\n", .{ info.itow, info.count, info.cno_max });
+
+                var idx: u8 = 0;
+                while (idx < info.count) {
+                    print("  {any}\n", .{info.satellites.get(idx)});
+                    idx += 1;
+                }
+            }
+
+            self._last_nav_sat = null;
+        } else {
+            print("get_mon_span() -> {}\n", .{value});
+        }
+    }
+
+    pub fn reset(self: *GNSS, mode: ?CFG_RST_MODE) void {
+        self.packet_cfg.cls = UBX_CLASS_CFG;
+        self.packet_cfg.id = UBX_CFG_RST;
+        self.packet_cfg.len = 4;
+        self.packet_cfg.starting_spot = 0;
+
+        const reset_mode = mode orelse CFG_RST_MODE.GNSS_RESET;
+
+        const payload = [4]u8{ 0xFF, 0xFF, @enumToInt(reset_mode), 0x00 };
+        std.mem.copy(u8, self.packet_cfg.payload[0..], payload[0..]);
+
+        // Build the packet ourselves, as it is a CFG packet, but no ACK is expected
+        calc_checksum(&self.packet_cfg);
+        self.send_spi_command(&self.packet_cfg);
+
+        var value = self.wait_for_no_ack(&self.packet_cfg, self.packet_cfg.cls, self.packet_cfg.id);
+        print("gnss reset({any}) -> {}\n", .{ reset_mode, value });
+
+        // self.read_buffer = [_]u8{0xFF} ** SPI_BUFFER_SIZE;
+        std.time.sleep(std.time.ns_per_ms * 100);
     }
 
     pub fn configure(self: *GNSS) void {
@@ -1177,15 +1419,61 @@ pub const GNSS = struct {
         // Get setting for port 4 (e.g. SPI)
         self.packet_cfg.payload[0] = 4;
 
-        print("configure()\n", .{});
         var value = self.send_command(&self.packet_cfg);
-        print("configure() -> {}\n", .{value});
+        print("gnss CFG_PRT(SPI) GET -> {}\n", .{value});
 
         self.packet_cfg.len = 20;
 
         // Enable only UBX messages (e.g. bit 1 is set)
         self.packet_cfg.payload[14] = 1;
         value = self.send_command(&self.packet_cfg);
-        print("configure() -> {}\n", .{value});
+        print("gnss CFG_PRT(SPI) SET {any} -> {}\n", .{ self.packet_cfg.payload[0..self.packet_cfg.len], value });
+
+        // Configure signal attenuation compensation
+        // 0   -> disables signal attenuation compensation
+        // 255 -> automatic signal attenuation compensation
+        // 1..63 -> maximum expected C/NO level is this dB value
+        const sig_att_comp: u8 = 0;
+        const dynmodel: u8 = @enumToInt(CFG_NAVSPG_DYNMODEL_MODE.AUTOMOT);
+
+        const payload: [10]u8 = CFG_NAVSPG_SIGATTCOMP ++ [_]u8{sig_att_comp} ++ CFG_NAVSPG_DYNMODEL ++ [_]u8{dynmodel};
+        print("gnss CFG_NAVSPG_SIGATTCOMP : {}\n", .{sig_att_comp});
+        print("gnss CFG_NAVSPG_DYNMODEL : {}\n", .{dynmodel});
+
+        self.packet_cfg.cls = UBX_CLASS_CFG;
+        self.packet_cfg.id = UBX_CFG_VALSET;
+        self.packet_cfg.len = 4 + payload.len;
+        self.packet_cfg.starting_spot = 0;
+
+        // Copy in the message header, bit 1 of byte 1 tells modules to apply setting to RAM layer only
+        const header: [4]u8 = [_]u8{ 0x00, 0x01, 0x00, 0x00 };
+        std.mem.copy(u8, self.packet_cfg.payload[0..], header[0..]);
+        std.mem.copy(u8, self.packet_cfg.payload[4..], payload[0..]);
+
+        value = self.send_command(&self.packet_cfg);
+        print("gnss CFG_VALSET {any} -> {}\n", .{ payload, value });
+    }
+
+    pub fn set_interval(self: *GNSS, rate: u16) void {
+        self.packet_cfg.cls = UBX_CLASS_CFG;
+        self.packet_cfg.id = UBX_CFG_RATE;
+        self.packet_cfg.len = 0;
+        self.packet_cfg.starting_spot = 0;
+
+        var value = self.send_command(&self.packet_cfg);
+
+        self.packet_cfg.len = 6;
+        self.packet_cfg.payload[0] = @truncate(u8, rate);
+        self.packet_cfg.payload[1] = @truncate(u8, rate >> 8);
+
+        value = self.send_command(&self.packet_cfg);
+        print("gnss set_interval({}) -> {}\n", .{ rate, value });
+
+        self.packet_cfg.payload[0] = 0;
+        self.packet_cfg.payload[1] = 0;
+
+        // Do read back
+        self.packet_cfg.len = 0;
+        value = self.send_command(&self.packet_cfg);
     }
 };

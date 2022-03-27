@@ -1,0 +1,30 @@
+#!/bin/bash
+
+trap "i2cset -y 1 20 11 0 0 0 0 0 0 0 0 0 0 0 0 i" EXIT
+
+recdir=$(jq -r '.recording.dir' config.json)
+camera_serial=`vcgencmd otp_dump | grep 28: | awk -F":" '{print $2}'`
+
+if [[ -d $recdir ]]
+then
+	prefix="debug-$camera_serial"
+	i=0
+
+	if [[ -e $recdir/$prefix-0.log || -L $recdir/$prefix-0.log ]] ; then
+    	while [[ -e $recdir/$prefix-$i.log || -L $recdir/$prefix-$i.log ]] ; do
+        	let i++
+    	done
+	fi
+
+	logpath=$recdir/$prefix-$i.log
+	
+	echo "Logging to : $logpath"
+	touch -- "$logpath"
+
+	echo "SERIAL: $camera_serial" >> $logpath
+	echo "ANTENNA: AVX 1004138" >> $logpath
+
+	exec /home/pi/zig/zig build run 2>&1 | tee -a $logpath
+else
+	exec /home/pi/zig/zig build run
+fi

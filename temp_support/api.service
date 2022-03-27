@@ -1,0 +1,13 @@
+[Unit]
+Description=api service
+After=network.target
+
+[Service]
+User=pi
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+WorkingDirectory=/home/pi/capable_camera_firmware
+ExecStart=/home/pi/zig/zig build run
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
