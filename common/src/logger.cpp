@@ -327,7 +327,7 @@ void Logger::QueueData(json &data)
 {
     // Add data to the queue
     mDataQueue[mQueueIndex].push(data);
-
+    std::cerr << "Queuing Data" << std::endl;
     if (mLive) {
         std::cout << data << std::endl;
     }
