@@ -340,7 +340,7 @@ void Logger::QueueData(json &data)
         latestFile << data.dump(1, '\t', true) << std::endl;
         latestFile.flush();
         if (mVerbose) {
-          std::cerr << "Adding latest sample to " << fullPath << std::endl;
+          std::cerr << "Adding latest sample to " << fullpath << std::endl;
         }
     } else {
         if (mVerbose) {
