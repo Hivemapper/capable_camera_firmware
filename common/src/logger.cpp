@@ -339,6 +339,9 @@ void Logger::QueueData(json &data)
     {
         latestFile << data.dump(1, '\t', true) << std::endl;
         latestFile.flush();
+        if (mVerbose) {
+          std::cerr << "Adding latest sample to " << fullPath << std::endl;
+        }
     } else {
         if (mVerbose) {
             std::cerr << "Couldn't open file to write latest sample" << std::endl;
