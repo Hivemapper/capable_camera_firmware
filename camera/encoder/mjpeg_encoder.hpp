@@ -50,6 +50,9 @@ private:
 		unsigned int height;
 		unsigned int stride;
 		int64_t timestamp_us;
+        int32_t expo_time;
+        float   alog_gain;
+        float   digi_gain;
 		uint64_t index;
 	};
 	std::queue<EncodeItem> encode_queue_;

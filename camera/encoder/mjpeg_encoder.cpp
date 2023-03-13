@@ -44,6 +44,8 @@ static int exif_read_srational(char const *str, unsigned char *mem);
 static ExifEntry *exif_create_tag(ExifData *exif, ExifIfd ifd, ExifTag tag);
 static void exif_set_string(ExifEntry *entry, char const *s);
 
+static const unsigned char exif_header[] = { 0xff, 0xd8, 0xff, 0xe1 };
+
 // libexif knows the formats of many tags, but not all (I mean, why not?!?).
 // Exceptions can be listed here.
 static std::map<ExifTag, ExifException> exif_exceptions =
@@ -196,12 +198,19 @@ MjpegEncoder::~MjpegEncoder()
 void MjpegEncoder::EncodeBuffer(int fd, size_t size, void *mem, unsigned int width, unsigned int height,
 								unsigned int stride, int64_t timestamp_us, libcamera::ControlList metadata)
 {
+    int32_t newExpoTime = metadata.get(libcamera::controls::ExposureTime);
+    float   newAlogGain = metadata.get(libcamera::controls::AnalogueGain);
+    float   newDigiGain = metadata.get(libcamera::controls::DigitalGain);
+
     EncodeItem item = { mem,
                         size,
                         width,
                         height,
                         stride,
                         timestamp_us,
+                        newExpoTime,
+                        newAlogGain,
+                        newDigiGain,
                         index_++ };
 	std::lock_guard<std::mutex> lock(encode_mutex_);
     if(!didInitDSI_)
@@ -232,7 +241,7 @@ void MjpegEncoder::initDownSampleInfo(EncodeItem &source)
   didInitDSI_ = true;
 }
 
-void MjpegEncoder::CreateExifData(libcamera::ControlList metadata,
+void MjpegEncoder::CreateExifData(EncodeItem &source,
                                   uint8_t *&exif_buffer,
                                   unsigned int &exif_len)
 {
@@ -465,7 +474,7 @@ void MjpegEncoder::encodeThread(int num)
 
     {
       auto start_time = std::chrono::high_resolution_clock::now();
-
+      CreateExifData(libcamera::ControlList metadata, exif_buffer, exif_buffer_len)
       encodeJPEG(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
       encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
 
