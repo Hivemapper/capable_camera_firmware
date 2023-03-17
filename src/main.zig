@@ -30,14 +30,41 @@ const threads = @import("threads.zig");
 const camera = @import("camera.zig");
 
 const led_driver = @import("led_driver.zig");
+const imu = @import("imu.zig");
 const gnss = @import("gnss.zig");
 const info = @import("info.zig");
+const system = @import("system.zig");
 
 const handlers = @import("handlers.zig");
 
 pub const routes = handlers.routes;
 
 var led: led_driver.LP50xx = undefined;
+
+pub const log_level: std.log.Level = .debug;
+
+// Define root.log to override the std implementation
+pub fn log(comptime level: std.log.Level, comptime scope: @TypeOf(.EnumLiteral), comptime format: []const u8, args: anytype) void {
+
+    // Ignore all non-critical logging from sources other than specified
+    const scope_prefix = "" ++ switch (scope) {
+        .main, .gnss, .config, .trace, .system, .imu, .default => @tagName(scope),
+        else => if (@enumToInt(level) <= @enumToInt(std.log.Level.crit))
+            @tagName(scope)
+        else
+            return,
+    } ++ " : ";
+
+    const prefix = " [" ++ @tagName(level) ++ "] " ++ scope_prefix;
+
+    const held = std.debug.getStderrMutex().acquire();
+    defer held.release();
+    const stderr = std.io.getStdErr().writer();
+
+    // Log timestamp cannot be included in second call to print due to comptime unknowns
+    nosuspend stderr.print("{d: >12.3}", .{system.logstamp()}) catch return;
+    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+}
 
 fn write_info_json() !void {
     if (try info.stat()) |stat| {
@@ -52,12 +79,17 @@ fn write_info_json() !void {
 }
 
 pub fn main() anyerror!void {
+    system.init();
+
     attachSegfaultHandler();
+
+    const slog = std.log.scoped(.main);
 
     defer std.debug.assert(!gpa.deinit());
     const allocator = &gpa.allocator;
 
-    var cfg = config.Config.load(allocator);
+    var cfg = config.load(allocator);
+    threads.configuration = cfg;
 
     var loop: std.event.Loop = undefined;
     try loop.initMultiThreaded();
@@ -66,17 +98,37 @@ pub fn main() anyerror!void {
     var i2c_fd = try fs.openFileAbsolute("/dev/i2c-1", fs.File.OpenFlags{ .read = true, .write = true });
     defer i2c_fd.close();
 
+    var spi00_fd = try fs.openFileAbsolute("/dev/spidev0.0", fs.File.OpenFlags{ .read = true, .write = true });
+    defer spi00_fd.close();
+
     var spi01_fd = try fs.openFileAbsolute("/dev/spidev0.1", fs.File.OpenFlags{ .read = true, .write = true });
     defer spi01_fd.close();
+
+    var imu_handle = spi.SPI{ .fd = spi00_fd };
+    slog.debug("SPI00 configure {any}", .{imu_handle.configure(0, 10000)});
+
+    var iim = imu.init(imu_handle);
+    slog.info("INIT", .{});
+    iim.config(imu.ACCEL_FS.G8, imu.GYRO_FS.DPS_1000);
+    slog.info("CONFIG", .{});
+
+    threads.imu_ctx = threads.ImuContext{
+        .imu = &iim,
+        .interval = 1000,
+        .trace_dir = cfg.recording.dir,
+        .allocator = allocator,
+    };
+
+    try loop.runDetached(allocator, threads.imu_thread, .{threads.imu_ctx});
 
     led = led_driver.LP50xx{ .fd = i2c_fd };
 
     if (led.read_register(0x00, 1)) |value| {
-        print("CONFIG0 = 0x{s}\n", .{std.fmt.fmtSliceHexUpper(value)});
+        slog.debug("CONFIG0 = 0x{s}", .{std.fmt.fmtSliceHexUpper(value)});
     }
 
     if (led.read_register(0x01, 1)) |value| {
-        print("CONFIG1 = 0x{s}\n", .{std.fmt.fmtSliceHexUpper(value)});
+        slog.debug("CONFIG1 = 0x{s}", .{std.fmt.fmtSliceHexUpper(value)});
     }
 
     led.off();
@@ -91,13 +143,13 @@ pub fn main() anyerror!void {
     var led_ctx = threads.HeartBeatContext{ .led = led, .idx = 2 };
     try loop.runDetached(allocator, threads.heartbeat_thread, .{led_ctx});
 
-    var handle = spi.SPI{ .fd = spi01_fd };
-    print("SPI configure {any}\n", .{handle.configure(0, 5500)});
+    var gnss_handle = spi.SPI{ .fd = spi01_fd };
+    slog.debug("SPI01 configure {any}", .{gnss_handle.configure(0, 5500)});
 
-    var pos = gnss.init(handle);
-    var gnss_interval = @divFloor(1000, @intCast(u16, cfg.ctx.camera.fps));
+    var pos = gnss.init(gnss_handle);
+    var gnss_interval = @divFloor(1000, @intCast(u16, cfg.camera.encoding.fps));
 
-    if (cfg.ctx.gnss.reset_on_start) {
+    if (cfg.gnss.reset_on_start) {
         pos.reset(null);
     }
 
@@ -108,15 +160,24 @@ pub fn main() anyerror!void {
         .led = led,
         .gnss = &pos,
         .interval = gnss_interval,
-        .config = cfg.ctx.gnss,
+        .config = cfg.gnss,
+        .trace_dir = cfg.recording.dir,
+        .allocator = allocator,
     };
 
     try loop.runDetached(allocator, threads.gnss_thread, .{threads.gnss_ctx});
 
-    // This will error if the socket doesn't exists.  We ignore that error
-    std.fs.cwd().deleteFile(cfg.ctx.recording.socket) catch {};
+    // This will error if either socket doesn't exists.  We ignore that error
+    std.fs.cwd().deleteFile(cfg.recording.connection.socket) catch {};
+    std.fs.cwd().deleteFile(cfg.cfg_socket) catch {};    
 
-    const address = std.net.Address.initUnix(cfg.ctx.recording.socket) catch |err| {
+    const address = std.net.Address.initUnix(cfg.recording.connection.socket) catch |err| {
+        slog.err("Error creating unix socket: {}", .{err});
+        std.debug.panic("Error creating unix socket: {}", .{err});
+    };
+    
+    const cfg_address = std.net.Address.initUnix(cfg.cfg_socket) catch |err| {
+        slog.err("Error creating unix socket: {}", .{err});
         std.debug.panic("Error creating unix socket: {}", .{err});
     };
 
@@ -124,29 +185,48 @@ pub fn main() anyerror!void {
     defer server.deinit();
 
     server.listen(address) catch |err| {
+        slog.err("Error listening to unix socket: {}", .{err});
+        std.debug.panic("Error listening to unix socket: {}", .{err});
+    };
+
+    // Set up cfg communication for camera thread
+    var cfg_server = std.net.StreamServer.init(.{});
+    defer cfg_server.deinit();
+
+    cfg_server.listen(cfg_address) catch |err| {
+        slog.err("Error listening to unix socket: {}", .{err});
         std.debug.panic("Error listening to unix socket: {}", .{err});
     };
 
     threads.rec_ctx = threads.RecordingContext{
-        .config = cfg.ctx.recording,
+        .config = cfg.recording,
         .allocator = allocator,
         .server = &server,
         .stop = std.atomic.Atomic(bool).init(false),
         .gnss = threads.gnss_ctx,
     };
 
+    threads.brdg_cfg_ctx = threads.BridgeCfgContext{
+        .cfg_server = &cfg_server,
+        .cfg_lock = .{},
+        .cfg_ready = false,
+        .cfg_data  = std.ArrayList(u8).init(allocator),
+    };
+    defer threads.brdg_cfg_ctx.cfg_data.deinit();
+
+    try loop.runDetached(allocator, threads.bridge_cfg_thread, .{&threads.brdg_cfg_ctx});
     try loop.runDetached(allocator, threads.recording_cleanup_thread, .{threads.rec_ctx});
     try loop.runDetached(allocator, threads.recording_server_thread, .{&threads.rec_ctx});
 
     threads.camera_ctx = threads.CameraContext{
-        .ctx = cfg,
-        .socket = threads.rec_ctx.config.socket,
+        .config = cfg.camera,
+        .socket = threads.rec_ctx.config.connection.socket,
     };
 
     //try loop.runDetached(allocator, camera.bridge_thread, .{threads.camera_ctx});
 
     var app = web.Application.init(allocator, .{ .debug = true });
-    var app_ctx = threads.AppContext{ .app = &app, .config = cfg.ctx.api };
+    var app_ctx = threads.AppContext{ .app = &app, .config = cfg.api };
     try loop.runDetached(allocator, threads.app_thread, .{app_ctx});
 
     loop.run();

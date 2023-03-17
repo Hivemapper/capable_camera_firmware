@@ -35,6 +35,9 @@ struct Options
        "Read the options from a file. If no filename is specified, default to config.txt. "
        "In case of duplicate options, the ones provided on the command line will be used. "
        "Note that the config file must only contain the long form options.")
+      ("netconfig,n", value<bool>(&netconfig)->default_value(false)->implicit_value(true), 
+        "Connect to the network endpoint of the camera firmware and listen for configuration "
+        "changes over the network")
       ("info-text", value<std::string>(&info_text)->default_value("#%frame (%fps fps) exp %exp ag %ag dg %dg"),
        "Sets the information string on the titlebar. Available values:\n"
        "%frame (frame number)\n%fps (framerate)\n%exp (shutter speed)\n%ag (analogue gain)"
@@ -70,7 +73,7 @@ struct Options
        "Set the EV exposure compensation, where 0 = no change")
       ("awb", value<std::string>(&awb)->default_value("auto"),
        "Set the AWB mode (auto, incandescent, tungsten, fluorescent, indoor, daylight, cloudy, custom)")
-      ("awbgains", value<std::string>(&awbgains)->default_value("0,0"),
+      ("awbgains", value<std::string>(&awbgains)->default_value("0.0,0.0"),
        "Set explict red and blue gains (disable the automatic AWB algorithm)")
       ("flush", value<bool>(&flush)->default_value(false)->implicit_value(true),
        "Flush output data as soon as possible")
@@ -106,6 +109,7 @@ struct Options
   bool help;
   bool version;
   bool verbose;
+  bool netconfig;
   uint64_t timeout; // in ms
   std::string config_file;
   std::string output;
@@ -142,6 +146,8 @@ struct Options
   std::string tuning_file;
   unsigned int lores_width;
   unsigned int lores_height;
+
+  virtual bool JSONParse();
 
   virtual bool Parse(int argc, char *argv[]);
   virtual void Print() const;

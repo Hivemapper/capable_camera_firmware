@@ -942,6 +942,23 @@ pub const Time = struct {
     pub fn writeIsoHMS(self: Time, writer: anytype) !void {
         try std.fmt.format(writer, ISO_HMS_FORMAT, .{ self.hour, self.minute, self.second });
     }
+
+    pub fn parseIso(hms: []const u8) !Time {
+        const value = std.mem.trim(u8, hms, " ");
+
+        const hour = std.fmt.parseInt(u8, value[0..2], 10) catch return error.InvalidFormat;
+        const minute = std.fmt.parseInt(u8, value[3..5], 10) catch return error.InvalidFormat;
+        const second = std.fmt.parseInt(u8, value[6..8], 10) catch return error.InvalidFormat;
+
+        var millisecond: u32 = 0;
+
+        // Assumes HH-MM-SS.mmmZ format, parses mmm as milliseconds
+        if (value.len == 13) {
+            millisecond = std.fmt.parseInt(u32, value[9..12], 10) catch return error.InvalidFormat;
+        }
+
+        return Time.create(hour, minute, second, millisecond * std.time.ns_per_ms);
+    }
 };
 
 test "time-create" {
@@ -1244,6 +1261,13 @@ pub const Datetime = struct {
         return self.shift(Delta{ .seconds = seconds });
     }
 
+    pub fn shiftMilliseconds(self: Datetime, milliseconds: i64) Datetime {
+        const seconds = @divFloor(milliseconds, time.ms_per_s);
+        const nanoseconds = milliseconds * time.ns_per_ms - seconds * time.ns_per_s;
+
+        return self.shift(Delta{ .seconds = seconds, .nanoseconds = @intCast(i32, nanoseconds) });
+    }
+
     // Create a Datetime shifted by the given Delta
     pub fn shift(self: Datetime, delta: Delta) Datetime {
         var days = delta.days;
@@ -1319,6 +1343,20 @@ pub const Datetime = struct {
         });
     }
 
+    const ISO_DATETIME_FMT = "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>6.3}Z";
+
+    pub fn formatIsoBuf(self: Datetime, buf: []u8) ![]u8 {
+        const second = @intToFloat(f64, self.time.second) + @intToFloat(f64, self.time.nanosecond) * 1e-9;
+        return std.fmt.bufPrint(buf, Datetime.ISO_DATETIME_FMT, .{
+            self.date.year,
+            self.date.month,
+            self.date.day,
+            self.time.hour,
+            self.time.minute,
+            second,
+        });
+    }
+
     // Formats a timestamp in the format used by HTTP.
     // eg "Tue, 15 Nov 1994 08:12:31 GMT"
     pub fn formatHttpFromTimestamp(buf: []u8, timestamp: i64) ![]const u8 {
@@ -1334,6 +1372,13 @@ pub const Datetime = struct {
     // ------------------------------------------------------------------------
     // Parsing methods
     // ------------------------------------------------------------------------
+
+    pub fn parseIso(ymdhms: []const u8) !Datetime {
+        const parsed_date = Date.parseIso(ymdhms[0..10]) catch return error.InvalidFormat;
+        const parsed_time = Time.parseIso(ymdhms[11..]) catch return error.InvalidFormat;
+
+        return Datetime{ .date = parsed_date, .time = parsed_time };
+    }
 
     // Parse a HTTP If-Modified-Since header
     // in the format "<day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT"

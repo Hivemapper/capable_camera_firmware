@@ -241,7 +241,7 @@ pub const Exif = struct {
 
             _ = std.fmt.bufPrint(&datetime, "{s} {s}", .{ timestamp[0..10], timestamp[11..19] }) catch unreachable;
             _ = std.fmt.bufPrint(&subseconds, "{s}", .{timestamp[20..23]}) catch unreachable;
-            std.log.info("EXIF | datetime : {s} {s} {s}", .{ timestamp, datetime, subseconds });
+            //std.log.info("EXIF | datetime : {s} {s} {s}", .{ timestamp, datetime, subseconds });
 
             entry = exif_create_tag(exif, ifd_exif, @ptrCast(c.ExifTag, c.ExifTag.EXIF_TAG_DATE_TIME_ORIGINAL));
             exif_set_string(entry, datetime[0..]);

@@ -18,6 +18,7 @@ const mem = std.mem;
 const print = std.debug.print;
 
 const web = @import("zhp");
+const system = @import("../system.zig");
 
 pub const Handler = struct {
     pub fn get(self: *Handler, request: *web.Request, response: *web.Response) !void {
@@ -126,7 +127,7 @@ pub fn stat() !?proc_stat {
         }
     }
 
-    if (uptime()) |value| {
+    if (system.uptime_idletime()) |value| {
         data.uptime = @floatToInt(u64, value[0] * jiffies);
         data.idletime = @floatToInt(u64, value[1] * jiffies / num_cores);
     }
@@ -134,29 +135,4 @@ pub fn stat() !?proc_stat {
     data.tick_per_sec = jiffies;
 
     return data;
-}
-
-pub fn uptime() ?[2]f32 {
-    const path = "/proc/uptime";
-    var buf: [32]u8 = undefined;
-
-    if (fs.cwd().readFile(path, &buf)) |bytes| {
-        var it = std.mem.split(bytes, " ");
-
-        const uptime_s = it.next() orelse @panic("malformed /proc/uptime");
-        const idletime_s = it.next() orelse @panic("malformed /proc/uptime");
-
-        // print("uptime {s} {s}\n", .{ uptime_s, idletime_s[0 .. idletime_s.len - 1] });
-
-        const uptime_f = std.fmt.parseFloat(f32, uptime_s) catch unreachable;
-        const idletime_f = std.fmt.parseFloat(f32, idletime_s[0 .. idletime_s.len - 1]) catch unreachable;
-
-        // print("uptime {d} {d}\n", .{ uptime_f, idletime_f });
-
-        return [_]f32{ uptime_f, idletime_f };
-    } else |_| {
-        return null;
-    }
-
-    return null;
 }

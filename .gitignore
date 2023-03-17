@@ -2,6 +2,8 @@
 testing
 config.json
 
+.tool-versions
+
 zig-out/
 zig-cache/
 

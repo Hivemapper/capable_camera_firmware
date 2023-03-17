@@ -64,7 +64,14 @@ void Output::OutputReady(void *mem, size_t size, int64_t timestamp_us, bool keyf
     time_offset_ = timestamp_us - last_timestamp_;
   last_timestamp_ = timestamp_us - time_offset_;
 
-  outputBuffer(mem, size, last_timestamp_, flags);
+  try{
+    outputBuffer(mem, size, last_timestamp_, flags);
+  }
+  catch(const std::exception& e){
+     std::cout << e.what() << std::endl;
+     Signal();
+  }
+  
   int64_t done_time = timestamp_now();
 
   // Save timestamps to a file, if that was requested.

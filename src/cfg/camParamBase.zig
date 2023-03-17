@@ -14,53 +14,35 @@
 
 const std = @import("std");
 const mem = std.mem;
-const fmt = std.fmt;
 
-pub const fullFilePath: []const u8 = "camera/bridge.sh";
+pub const filePath: []const u8 = "./bridge.sh";
 
-const scriptLines = 
-\\#!/bin/bash
-\\
-\\trap "i2cset -y 1 20 12 0x00 b" EXIT
-\\
-\\while :  
-\\do  
-\\sleep 1
-\\value=$(i2cget -y 1 20 15 b)
-\\if [ "$value" == "0xff" ]  
-\\then
-\\	  echo $value
-\\	  echo "GPS Locked"
-\\	  break
-\\fi
-\\done  
-\\
-\\i2cset -y 1 20 12 0xFF b
-\\
+pub const scriptLines = 
+    \\#!/bin/bash
+    \\
+    \\trap "i2cset -y 1 0x14 0xc 0x00 b" EXIT
+    \\
+    \\while :  
+    \\do  
+    \\sleep 1
+    \\value=$(i2cget -y 1 0x14 0xf b)
+    \\if [ "$value" == "0xff" ]  
+    \\then
+    \\    echo $value
+    \\    echo "GPS Locked"
+    \\    break
+    \\fi
+    \\done  
+    \\
+    \\i2cset -y 1 0x14 0xc 0xFF b
+    \\
 ;
 
-const execLine = 
-\\setarch linux32 ./build/libcamera-bridge --codec mjpeg --segment 0 -o sck:///tmp/bridge.sock --width {} --height {} --framerate {} --tuning-file imx477.json --timeout 0
-;
+pub const execLine1 = 
+    \\setarch linux32 ./libcamera-bridge --codec mjpeg --segment 0 -o sck:///tmp/bridge.sock --width {} --height {} --framerate {} \
+    \\
+; 
 
-pub fn update_bridge_script(cfg_filename: []const u8,
-                            hpx:          u16,
-                            vpx:          u16,
-                            fps:          u8)
-                            anyerror!void{                 
-    
-    const output_file = try std.fs.cwd().createFile(
-        cfg_filename, .{ .read = true });
-    defer output_file.close();
-    
-    var execLineBuff: [256]u8 = undefined;
-    const execLineSlice = execLineBuff[0..];
-    
-    const filledStr = try fmt.bufPrint(execLineSlice, execLine, 
-        .{hpx, vpx, fps});
-    
-    try output_file.writeAll(scriptLines);
-    try output_file.writeAll(filledStr);   
-    return;
-}
-                  
+pub const execLine2 =
+    \\--awb {s} --awbgains {},{} --brightness {} --contrast {} --exposure {s} --ev {} --gain {} --metering {s} --saturation {} --sharpness {} --tuning-file imx477.json --timeout 0;
+;

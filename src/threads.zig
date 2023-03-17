@@ -17,18 +17,42 @@ const print = @import("std").debug.print;
 
 const led_driver = @import("led_driver.zig");
 const gnss = @import("gnss.zig");
+const imu = @import("imu.zig");
 const config = @import("config.zig");
 const recording = @import("recording.zig");
 const exif = @import("exif.zig");
 const datetime = @import("datetime.zig");
+const system = @import("system.zig");
 
 const web = @import("zhp");
+const mutex = @import("std").Thread.Mutex;
 
 pub const GnssContext = struct {
     gnss: *gnss.GNSS,
     led: led_driver.LP50xx,
     interval: u16 = 1000,
     config: config.Gnss,
+
+    trace_dir: []const u8,
+    allocator: *std.mem.Allocator,
+};
+
+pub const ImuContext = struct {
+    imu: *imu.IMU,
+    interval: u16 = 100,
+
+    trace_dir: []const u8,
+    allocator: *std.mem.Allocator,
+
+    pub fn latest(self: *ImuContext) imu.Sample {
+        var data = self.imu.latest();
+        data.age = system.timestamp() - data.received_at;
+        return data;
+    }
+
+    pub fn history(self: *ImuContext) []const imu.Sample {
+        return self.imu.fifo.readableSlice(0);
+    }
 };
 
 pub const AppContext = struct {
@@ -37,6 +61,7 @@ pub const AppContext = struct {
 };
 
 pub var gnss_ctx: GnssContext = undefined;
+pub var imu_ctx: ImuContext = undefined;
 
 pub const HeartBeatContext = struct {
     idx: u8 = 0,
@@ -47,6 +72,14 @@ pub const HeartBeatContext = struct {
 };
 
 pub var rec_ctx: RecordingContext = undefined;
+pub var brdg_cfg_ctx: BridgeCfgContext = undefined;
+
+pub const BridgeCfgContext = struct {
+    cfg_server: *std.net.StreamServer,
+    cfg_lock: mutex,
+    cfg_ready: bool,
+    cfg_data: std.ArrayList(u8),
+};
 
 pub const RecordingContext = struct {
     config: config.Recording,
@@ -58,11 +91,12 @@ pub const RecordingContext = struct {
 };
 
 pub const CameraContext = struct {
-    ctx: config.Config,
-    socket: []const u8
+    config: config.Camera,
+    socket: []const u8,
 };
 
 pub var camera_ctx: CameraContext = undefined;
+pub var configuration: config.Config = undefined;
 
 const JPEG_SOI = [_]u8{ 0xFF, 0xD8 };
 const JPEG_EOI = [_]u8{ 0xFF, 0xD9 };
@@ -70,8 +104,83 @@ const JPEG_EOI = [_]u8{ 0xFF, 0xD9 };
 const PUB = "PUB ";
 const EOL = "\r\n";
 
+const HELLO = "{\"Heartbeat\":\"Hello!\"}";
+
+const SLEEP = std.time.ns_per_ms * 1000;
+
+pub var use_fake_pvt = false;
+
 fn find_som(buffer: []const u8, start: usize, end: usize) ?usize {
     return std.mem.indexOf(u8, buffer[start..end], PUB[0..]);
+}
+
+pub fn bridge_cfg_thread(ctx: *BridgeCfgContext) void {
+    while (true) {
+        const conn = ctx.cfg_server.accept() catch |err| {
+            std.log.err("WRITE | server accept | ERR {}", .{err});
+            continue;
+        };
+        defer conn.stream.close();
+        
+        //Perform initial configuration send-over
+        if(ctx.cfg_lock.tryAcquire()) |held| {
+            defer held.release();
+            ctx.cfg_ready = true;
+            jsonify_cfg_data(ctx) catch |err| {
+                std.log.err("config: send failed: {s}", .{err});
+                ctx.cfg_ready = false;
+            };
+        }
+        
+        var sendover = async handle_cfg_bridge(ctx, conn);
+        await sendover;
+    }
+}
+
+pub fn jsonify_cfg_data(ctx: *BridgeCfgContext) !void {
+    try std.json.stringify(configuration.data(), .{}, ctx.cfg_data.writer());
+}
+
+fn handle_cfg_bridge(ctx: *BridgeCfgContext, conn: std.net.StreamServer.Connection) void {
+    var doDelay = false;
+    var sendHeartbeat: u8 = 3;
+    while(true) {
+        //Check our bridge context for more data if it exists 
+        if(ctx.cfg_lock.tryAcquire()) |held| {
+            defer held.release();
+            if(ctx.cfg_ready){
+                const data_len = conn.stream.writer().write(ctx.cfg_data.items) catch |err| {
+                    std.log.err("CFG_WRITE | ERR {}", .{err});
+                    break;
+                };
+                std.log.info("Writing {} bytes over config.", .{data_len});
+                std.log.info("{s}", .{ctx.cfg_data.items});
+                ctx.cfg_ready = false;
+                ctx.cfg_data.clearRetainingCapacity();
+            }
+            else{
+                doDelay = true;
+            }
+        }
+        else{
+            doDelay = true;
+        }
+        if(doDelay){
+            std.time.sleep(SLEEP);
+            doDelay = false;
+            //sendHeartbeat -= 1;
+        }
+        
+        //if(sendHeartbeat == 0){
+        //    sendHeartbeat = 3;
+        //    const data_len = conn.stream.writer().write(HELLO) catch |err| {
+        //        std.log.err("CFG_WRITE | ERR {}", .{err});
+        //        break;
+        //    };
+        //    ctx.cfg_data.clearRetainingCapacity();
+        //}
+        
+    }
 }
 
 pub fn recording_server_thread(ctx: *RecordingContext) void {
@@ -80,7 +189,6 @@ pub fn recording_server_thread(ctx: *RecordingContext) void {
             std.log.err("REC | server accept | ERR {}", .{err});
             continue;
         };
-
         std.log.info("REC | client connected", .{});
         defer conn.stream.close();
 
@@ -161,7 +269,7 @@ fn handle_connection(ctx: *RecordingContext, conn: std.net.StreamServer.Connecti
             // Using read as start of search space as PUB might be split across UDP packets
             // and head.. might skip over start of sequence.
 
-            // if (std.mem.indexOf(u8, buffer[read..head+data_len], PUB[0..])) |idx_msg_start| {
+            // if (std.mem.indexOf(u8, buffer[read..head+data_len], PUB[0..])) |idx_msg_start| 
             if (find_som(&buffer, read, head + data_len)) |idx_msg_start| {
                 const idx_topic_start = idx_msg_start + PUB.len;
 
@@ -237,27 +345,51 @@ fn handle_connection(ctx: *RecordingContext, conn: std.net.StreamServer.Connecti
         head += data_len;
 
         if (found_start and found_end) {
-            var pvt = ctx.gnss.gnss.last_nav_pvt();
+            if(use_fake_pvt){
+                var pvt = gnss.fake_pvt;
+                ctx.gnss.led.set(0, [_]u8{ 0, 255, 0 }); // TODO : better access method for recording LED
+                write_image(ctx, buffer[idx_start..idx_end], pvt, 0, true) catch |err| {
+                    std.log.err("REC RECV | could not write image : {}", .{err});
+                    reset_to = 0;
+                    continue;
+                };
+                if(ctx.config.write_aux) {
+                    write_image(ctx, buffer[idx_start..idx_end], pvt, 1, true) catch |err| {
+                    std.log.err("REC RECV | could not write image : {}", .{err});
+                    reset_to = 0;
+                    continue;
+                    };                    
+                }
+            } else {
+                var pvt = ctx.gnss.gnss.last_nav_pvt();
+                if (pvt) |value| {
+                    if (value.fix_type > 0) {
+                        // std.log.info("REC RECV | Frame {} is {}", .{ frame_count, idx_end - idx_start });
+                        ctx.gnss.led.set(0, [_]u8{ 0, 255, 0 }); // TODO : better access method for recording LED
 
-            if (pvt) |value| {
-                if (value.fix_type > 0) {
-                    // std.log.info("REC RECV | Frame {} is {}", .{ frame_count, idx_end - idx_start });
-                    ctx.gnss.led.set(0, [_]u8{ 0, 255, 0 }); // TODO : better access method for recording LED
-
-                    write_image(ctx, buffer[idx_start..idx_end], value) catch |err| {
-                        std.log.err("REC RECV | could not write image : {}", .{err});
-                        reset_to = 0;
-                        continue;
-                    };
-                } else {
-                    std.log.info("REC SKIP | Frame {} is {}", .{ frame_count, idx_end - idx_start });
-                    ctx.gnss.led.set(0, [_]u8{ 255, 127, 0 }); // TODO : better access method for recording LED
+                        write_image(ctx, buffer[idx_start..idx_end], value, 0, false) catch |err| {
+                            std.log.err("REC RECV | could not write image : {}", .{err});
+                            reset_to = 0;
+                            continue;
+                        };
+                        if(ctx.config.write_aux) {
+                            write_image(ctx, buffer[idx_start..idx_end], value, 1, false) catch |err| {
+                            std.log.err("REC RECV | could not write image : {}", .{err});
+                            reset_to = 0;
+                            continue;
+                            };                    
+                        }
+                    } else {
+                        std.log.info("REC SKIP | Frame {} is {}", .{ frame_count, idx_end - idx_start });
+                        ctx.gnss.led.set(0, [_]u8{ 255, 127, 0 }); // TODO : better access method for recording LED
+                    }
                 }
             }
-
+            
             // Copy any partial data we have to the start of the acculumation buffer
             if (idx_end + 2 < head) {
                 std.log.info("REC RECV | copy tail bytes : {} {}", .{ idx_end, head });
+                std.log.info("CUR CPU TIME: {}", .{std.time.nanoTimestamp()});
                 std.mem.copy(u8, buffer[0 .. head - idx_end - 2], buffer[idx_end + 2 .. head]);
                 reset_to = head - idx_end - 2;
             } else {
@@ -267,18 +399,49 @@ fn handle_connection(ctx: *RecordingContext, conn: std.net.StreamServer.Connecti
     }
 }
 
-fn alloc_filename(ctx: *RecordingContext, timestamp: ?[24]u8) ![]u8 {
-    const temp = try std.fmt.allocPrint(ctx.allocator, "{s}/{s}.jpg", .{ ctx.config.dir, timestamp });
-    defer ctx.allocator.free(temp);
+fn alloc_filename(ctx: *RecordingContext, timestamp: ?[24]u8, dirType: u8) ![]u8 {
+    var dirStr: []const u8 = undefined;
+    if (dirType == 0){
+        dirStr = ctx.config.dir;
+    } else {
+        dirStr = ctx.config.dirS;
+    }
 
+    const temp = try std.fmt.allocPrint(ctx.allocator, "{s}/{s}.jpg", .{ dirStr, timestamp });
+    defer ctx.allocator.free(temp);
     const filename = try ctx.allocator.alloc(u8, temp.len);
     _ = std.mem.replace(u8, temp, ":", "-", filename[0..]);
     return filename;
 }
 
-fn determine_frametime(pvt: gnss.PVT) [24]u8 {
+fn get_fake_frametime(pvt: gnss.PVT) [24]u8 {
     var timestamp: [24]u8 = undefined;
     const default = "1970-01-01T00-00-00.000Z";
+    std.mem.copy(u8, timestamp[0..], default[0..]);  
+
+    const age_sec = std.time.timestamp();
+    const age_nsec = std.time.nanoTimestamp() - (age_sec * std.time.ns_per_s);
+    
+    var stamp = datetime.Datetime.now();
+    
+    stamp = stamp.shift(datetime.Datetime.Delta{ .seconds = age_sec, .nanoseconds = @intCast(i32, age_nsec) });
+
+    _ = std.fmt.bufPrint(&timestamp, "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>6.3}Z", .{
+        stamp.date.year,
+        stamp.date.month,
+        stamp.date.day,
+        stamp.time.hour,
+        stamp.time.minute,
+        @intToFloat(f64, stamp.time.second) + @intToFloat(f64, stamp.time.nanosecond) * 1e-9,
+    }) catch |err| {};
+
+    return timestamp;
+}
+
+
+fn determine_frametime(pvt: gnss.PVT) [24]u8 {
+    var timestamp: [24]u8 = undefined;
+    const default = "0000-00-00T00-00-00.000Z";
     std.mem.copy(u8, timestamp[0..], default[0..]);
 
     const t = pvt.time;
@@ -319,13 +482,18 @@ fn determine_frametime(pvt: gnss.PVT) [24]u8 {
     return timestamp;
 }
 
-fn write_image(ctx: *RecordingContext, buffer: []const u8, pvt: gnss.PVT) !void {
-    const timestamp = determine_frametime(pvt);
-
+fn write_image(ctx: *RecordingContext, buffer: []const u8, pvt: gnss.PVT, dirType: u8, useFakeTS: bool) !void {
+    var timestamp : [24]u8 = undefined;
+    if(useFakeTS){
+        timestamp = get_fake_frametime(pvt);
+    } else {
+        timestamp = determine_frametime(pvt);
+    }
+     
     // std.log.info("FNAME | GNSS {s} + {d:.3} -> {s}", .{ pvt.timestamp, @intToFloat(f64, pvt.age) / 1000.0, timestamp });
-    std.log.info("REC RECV | Frame {s} is {} bytes", .{ timestamp, buffer.len });
+    //std.log.info("REC RECV | Frame {s} is {} bytes", .{ timestamp, buffer.len });
 
-    var filename = try alloc_filename(ctx, timestamp);
+    var filename = try alloc_filename(ctx, timestamp, dirType);
     defer ctx.allocator.free(filename);
 
     var file = try std.fs.cwd().createFile(filename, .{});
@@ -410,8 +578,15 @@ pub fn gnss_thread(ctx: GnssContext) void {
     ctx.gnss.set_timeout(ctx.interval + 50);
 
     var last_debug_ms = std.time.milliTimestamp();
+    var last_debug_pvt_ms = std.time.milliTimestamp();
     var last_debug: i8 = -1;
+
     const debug_interval: usize = ctx.config.debug_period * 1000;
+    const debug_interval_pvt: usize = ctx.config.debug_period_pvt * 1000;
+    const slog = std.log.scoped(.gnss);
+
+    var trace = recording.TraceLog(gnss.PVT).init(ctx.allocator, ctx.trace_dir, recording.TraceLogType.GNSS);
+    var record: bool = false;
 
     while (true) {
         const this_ms = std.time.milliTimestamp();
@@ -440,11 +615,31 @@ pub fn gnss_thread(ctx: GnssContext) void {
                 } else {
                     // If there is a fix, color LED green
                     ctx.led.set(1, [_]u8{ 0, 255, 0 });
+
+                    if (record == false) {
+                        slog.info("starting GNSS log {s}", .{pvt.timestamp});
+                        trace.setTimestamp(pvt.timestamp);
+                        record = true;
+                    }
+
+                    if (system.state.gnss_has_locked == false) {
+                        system.state.gnssInitLockAt(pvt.received_at, pvt.timestamp);
+                    }
                 }
 
-                print("PVT {s} at ({d:.6},{d:.6}) height {d:.2} dop {d:.2}", .{ pvt.timestamp, pvt.latitude, pvt.longitude, pvt.height, pvt.dop });
-                print(" heading {d:.2} velocity ({d:.2},{d:.2},{d:.2}) speed {d:.2}", .{ pvt.heading, pvt.velocity[0], pvt.velocity[1], pvt.velocity[2], pvt.speed });
-                print(" fix {d} sat {} flags {} {} {}\n", .{ pvt.fix_type, pvt.satellite_count, pvt.flags[0], pvt.flags[1], pvt.flags[2] });
+                if (debug_interval_pvt > 0 and this_ms - last_debug_pvt_ms > debug_interval_pvt) {
+                    last_debug_pvt_ms = this_ms;
+
+                    slog.info("{s} {any}", .{ pvt.timestamp, pvt });
+                }
+
+                //print("PVT {s} at ({d:.6},{d:.6}) height {d:.2} dop {d:.2}", .{ pvt.timestamp, pvt.latitude, pvt.longitude, pvt.height, pvt.dop });
+                //print(" heading {d:.2} velocity ({d:.2},{d:.2},{d:.2}) speed {d:.2}", .{ pvt.heading, pvt.velocity[0], pvt.velocity[1], pvt.velocity[2], pvt.speed });
+                //print(" fix {d} sat {} flags {} {} {}\n", .{ pvt.fix_type, pvt.satellite_count, pvt.flags[0], pvt.flags[1], pvt.flags[2] });
+
+                if (record) {
+                    trace.append(pvt);
+                }
             }
         } else {
             // If no communications, color LED red
@@ -452,6 +647,33 @@ pub fn gnss_thread(ctx: GnssContext) void {
         }
 
         // std.time.sleep(std.time.ns_per_ms * @intCast(u64, ctx.interval / 4));
+    }
+}
+
+pub fn imu_thread(ctx: ImuContext) void {
+    var trace = recording.TraceLog(imu.Sample).init(ctx.allocator, ctx.trace_dir, recording.TraceLogType.IMU);
+    const slog = std.log.scoped(.imu);
+
+    while (true) {
+        const this_ms = std.time.milliTimestamp();
+        const data = ctx.imu.poll();
+
+        if (system.state.gnss_has_locked) {
+            if (trace.timestamp_needed) {
+                var buf: [24]u8 = undefined;
+                _ = system.state.isoBuf(buf[0..]) catch |err| {
+                    slog.warn("state.isoBuf failed", .{});
+                };
+
+                slog.info("starting IMU log {s}", .{buf});
+                trace.setTimestamp(buf);
+            }
+
+            trace.append(data);
+        }
+
+        const duration = std.time.milliTimestamp() - this_ms;
+        std.time.sleep(std.time.ns_per_ms * @intCast(u64, ctx.interval - duration));
     }
 }
 

@@ -58,4 +58,18 @@ pub fn build(b: *std.build.Builder) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const bench_exe = b.addExecutable("benchmark", "src/benchmark.zig");
+    bench_exe.setTarget(target);
+    bench_exe.setBuildMode(mode);
+    bench_exe.install();
+
+    const bench_run_cmd = bench_exe.run();
+    bench_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        bench_run_cmd.addArgs(args);
+    }
+
+    const bench_run_step = b.step("run-bench", "Run benchmark tool");
+    bench_run_step.dependOn(&bench_run_cmd.step);
 }
