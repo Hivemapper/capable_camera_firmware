@@ -11,6 +11,7 @@
 #include <jpeglib.h>
 #include <libyuv.h>
 #include <libexif/exif-data.h>
+#include <boost/filesystem.hpp>
 #include "mjpeg_encoder.hpp"
 
 //#include <Magick++.h>
@@ -180,7 +181,32 @@ MjpegEncoder::MjpegEncoder(VideoOptions const *options)
     {
       std::cerr << "Opening downsample stream at " << options_->downsampleStreamDir << std::endl;
       doDownsample_ = true;
-
+    }
+    else
+    {
+      doDownsample_ = false;
+    }
+    //If both primary and secondary/usb are not writing at main spec, then we turn off
+    //Full resolution rendering.
+    {
+      bool writePrim = false;
+      bool writeSec  = false;
+      if(options_->output != "" && boost::filesystem::exists(options_->output))
+      {
+        writePrim = true;
+      }
+      if(options_->output_2nd != "" && boost::filesystem::exists(options_->output_2nd))
+      {
+        writeSec = true;
+      }
+      if(writePrim || writeSec)
+      {
+        doPrimsample_ = true;
+      }
+      else
+      {
+        doPrimsample_ = false;
+      }
     }
     didInitDSI_ = false;
 }
@@ -305,8 +331,8 @@ void MjpegEncoder::CreateExifData(EncodeItem &source,
     {
         if (exif)
             exif_data_unref(exif);
-        if (exif_buffer)
-            free(exif_buffer);
+        //if (exif_buffer)
+        //    free(exif_buffer);
         throw;
     }
 }
@@ -347,7 +373,6 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
   cinfo.comp_info[2].v_samp_factor = 1;
 
   jpeg_set_quality(&cinfo, options_->qualityDwn, TRUE);
-  encoded_buffer = nullptr;
   buffer_len = 0;
   jpeg_mem_len_t jpeg_mem_len;
   jpeg_mem_dest(&cinfo, &encoded_buffer, &jpeg_mem_len);
@@ -393,7 +418,6 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
 	jpeg_set_defaults(&cinfo);
 	cinfo.raw_data_in = TRUE;
 	jpeg_set_quality(&cinfo, options_->quality, TRUE);
-	encoded_buffer = nullptr;
 	buffer_len = 0;
 	jpeg_mem_len_t jpeg_mem_len;
 	jpeg_mem_dest(&cinfo, &encoded_buffer, &jpeg_mem_len);
@@ -438,8 +462,26 @@ void MjpegEncoder::encodeThread(int num)
 
   std::chrono::duration<double> encode_time(0);
   uint32_t frames = 0;
-
+  uint32_t index = 0;
   EncodeItem encode_item;
+
+  // Preallocate buffers for better performance
+  uint8_t *encoded_buffer[NUM_FRAMES];
+  uint8_t *encoded_prev_buffer[NUM_FRAMES];
+  uint8_t *exif_buffer[NUM_FRAMES];
+  size_t buffer_len[NUM_FRAMES];
+  size_t buffer_prev_len[NUM_FRAMES];
+  size_t exif_buffer_len[NUM_FRAMES];
+  for (int ii = 0; ii < NUM_FRAMES; ii+=1)
+  {
+    encoded_buffer[ii] = (uint8_t*)malloc(MAX_FRAME_MEMORY);
+    encoded_prev_buffer[ii] = (uint8_t*)malloc(MAX_FRAME_MEMORY / 2);
+    exif_buffer[ii] = nullptr;
+    buffer_len[ii] = 0;
+    buffer_prev_len[ii] = 0;
+    exif_buffer_len[ii] = 0;
+  }
+
   while (true) {
     {
       std::unique_lock <std::mutex> lock(encode_mutex_);
@@ -463,21 +505,18 @@ void MjpegEncoder::encodeThread(int num)
         }
       }
     }
-
-    // Encode the buffers (and generate an accompanying preview and exif)
-    uint8_t *encoded_buffer = nullptr;
-    uint8_t *encoded_prev_buffer = nullptr;
-    uint8_t *exif_buffer = nullptr;
-    size_t buffer_len = 0;
-    size_t buffer_prev_len = 0;
-    size_t exif_buffer_len = 0;
-
+    index = frames % NUM_FRAMES;
     {
       auto start_time = std::chrono::high_resolution_clock::now();
       CreateExifData(libcamera::ControlList metadata, exif_buffer, exif_buffer_len)
-      encodeJPEG(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
-      encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
-
+      if(doPrimsample_)
+      {
+          encodeJPEG(cinfoMain, encode_item, encoded_buffer[index], buffer_len[index], num);
+      }
+      if(doDownsample_)
+      {
+          encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer[index], buffer_prev_len[index], num);
+      }
       encode_time += (std::chrono::high_resolution_clock::now() - start_time);
       if(options_->verbose && frames > 1)
       {
@@ -492,18 +531,17 @@ void MjpegEncoder::encodeThread(int num)
     // application can take its time with the data without blocking the
     // encode process.
 
-    OutputItem output_item = { encoded_buffer,
-                               buffer_len,
-                               encoded_prev_buffer,
-                               buffer_prev_len,
-                               exif_buffer,
-                               exif_buffer_len,
+    OutputItem output_item = { encoded_buffer[index],
+                               buffer_len[index],
+                               encoded_prev_buffer[index],
+                               buffer_prev_len[index],
+                               exif_buffer[index],
+                               exif_buffer_len[index],
                                encode_item.timestamp_us,
                                encode_item.index };
     {
-        std::lock_guard<std::mutex> lock(output_mutex_);
+        std::lock_guard<std::mutex> lock(output_mutex_[num]);
         output_queue_[num].push(output_item);
-        output_cond_var_.notify_one();
     }
   }
 }
@@ -515,7 +553,6 @@ void MjpegEncoder::outputThread()
   while (true)
   {
     {
-      std::unique_lock<std::mutex> lock(output_mutex_);
       while (true)
       {
         using namespace std::chrono_literals;
@@ -526,16 +563,17 @@ void MjpegEncoder::outputThread()
 	  
         // We look for the thread that's completed the frame we want next.
         // If we don't find it, we wait.
-        for (auto &q : output_queue_)
+        for (uint32_t ii = 0; ii < NUM_ENC_THREADS; ii+=1)
         {
-          if (!q.empty() && q.front().index == index)
+          std::unique_lock<std::mutex> lock(output_mutex_[ii]);
+          if (!output_queue_[ii].empty() && output_queue_[ii].front().index == index)
           {
-            item = q.front();
-            q.pop();
+            item = output_queue_[ii].front();
+            output_queue_[ii].pop();
             goto got_item;
           }
         }
-        output_cond_var_.wait_for(lock, 200ms);
+        std::this_thread::sleep_for (50ms);
       }
     }
     got_item:
@@ -546,8 +584,6 @@ void MjpegEncoder::outputThread()
                              item.preview_bytes_used,
                              item.timestamp_us,
                              true);
-      free(item.mem);
-      free(item.preview_mem);
       index+=1;
   }
 }

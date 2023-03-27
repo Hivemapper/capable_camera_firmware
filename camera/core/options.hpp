@@ -57,8 +57,12 @@ struct Options
        "Set the output file directory or socket endpoint")
       ("output_2nd", value<std::string>(&output_2nd)->default_value(""),
        "Set the output file directory or socket endpoint")
+      ("downsampleStreamDir", value<std::string>(&downsampleStreamDir)->default_value(""),
+       "Set the downsample output file directory")
       ("gpsLockCheckDir", value<std::string>(&gpsLockCheckDir)->default_value(""),
        "Set the check directory for the GPS LOCK ACQUIRED file")
+      ("latestChkFileDir", value<std::string>(&latestChkFileDir)->default_value("/mnt/data/pic/"),
+       "Set the check directory for the latest picture")
       ("prefix", value<std::string>(&prefix)->default_value(""),
        "Set the beginning of output file names if provided")
       ("minfreespace", value<std::uint64_t>(&minfreespace)->default_value(268435456),
@@ -81,7 +85,7 @@ struct Options
       ("vflip", value<bool>(&vflip_)->default_value(false)->implicit_value(true), "Request a vertical flip transform")
       ("rotation", value<int>(&rotation_)->default_value(0), "Request an image rotation, 0 or 180")
       ("roi", value<std::string>(&roi)->default_value("0,0,0,0"), "Set region of interest (digital zoom) e.g. 0.25,0.25,0.5,0.5")
-      ("shutter", value<float>(&shutter)->default_value(0),
+      ("shutter", value<int>(&shutter)->default_value(0),
        "Set a fixed shutter speed")
       ("analoggain", value<float>(&gain)->default_value(0),
        "Set a fixed gain value (synonym for 'gain' option)")
@@ -138,6 +142,7 @@ struct Options
   bool writeTmp;
   std::string output;
   std::string output_2nd;
+  std::string latestChkFileDir;
   std::string downsampleStreamDir;
   std::string gpsLockCheckDir;
   uint64_t minfreespace;
@@ -151,7 +156,7 @@ struct Options
   libcamera::Transform transform;
   std::string roi;
   float roi_x, roi_y, roi_width, roi_height;
-  float shutter;
+  int shutter;
   float gain;
   std::string metering;
   int metering_index;

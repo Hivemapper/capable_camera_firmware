@@ -29,8 +29,10 @@ private:
 	// How many threads to use. Whichever thread is idle will pick up the next frame.
 	static const int NUM_ENC_THREADS = 4;
 	static const int NUM_OUT_THREADS = 4;
+    static const int NUM_FRAMES = 4;
+    static const int MAX_FRAME_MEMORY = 4194034;
 
-	// These threads do the actual encoding.
+    // These threads do the actual encoding.
 	void encodeThread(int num);
 
 	// Handle the output buffers in another thread so as not to block the encoders. The
@@ -40,6 +42,7 @@ private:
 
 	bool abort_;
     bool doDownsample_;
+    bool doPrimsample_;
 	uint64_t index_;
 
 	struct EncodeItem
@@ -56,8 +59,8 @@ private:
 		uint64_t index;
 	};
 	std::queue<EncodeItem> encode_queue_;
-	std::mutex encode_mutex_;
-	std::condition_variable encode_cond_var_;
+    std::mutex encode_mutex_;
+    std::condition_variable encode_cond_var_;
 	std::thread encode_thread_[NUM_ENC_THREADS];
 
     bool didInitDSI_;
@@ -95,7 +98,6 @@ private:
 		uint64_t index;
 	};
 	std::queue<OutputItem> output_queue_[NUM_ENC_THREADS];
-	std::mutex output_mutex_;
-	std::condition_variable output_cond_var_;
+    std::mutex output_mutex_[NUM_ENC_THREADS];
 	std::thread output_thread_;
 };

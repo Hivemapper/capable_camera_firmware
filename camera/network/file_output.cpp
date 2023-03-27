@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <boost/filesystem.hpp>
+#include <fmt/core.h>
 
 #include "file_output.hpp"
 
@@ -29,6 +30,7 @@ FileOutput::FileOutput(VideoOptions const *options) : Output(options)
   directory_[1] = options_->output_2nd;
   directory_[2] = previewDir_;
 
+  latestDir_    = options_->latestChkFileDir;
   minFreeSizes[0] = options_->minfreespace;
   minFreeSizes[1] = options_->minfreespace_2nd;
   minFreeSizes[2] = options_->minfreespace;
@@ -65,7 +67,7 @@ FileOutput::FileOutput(VideoOptions const *options) : Output(options)
 
   //Use stringstream to create latest file for picture
   std::stringstream fileNameGenerator;
-  fileNameGenerator << directory_[0];
+  fileNameGenerator << latestDir_;
   fileNameGenerator << "latest.txt";
   latestFileName_ = fileNameGenerator.str();
 
@@ -109,21 +111,37 @@ void FileOutput::outputBuffer(void *mem,
   {
     std::cerr << "Time recording issues" << std::endl;
   }
-  
+  std::string primFileName = fmt::format("{}{}{:0>10d}_{:0>6d}{}", directory_[0],prefix_, tv.tv_sec,
+                                         tv.tv_usec, postfix_);
   if(directory_[0] != "")
   {
-    wrapAndWrite(mem, size, &tv, 0);
+    wrapAndWrite(mem, primFileName, size, 0);
   }
   if(directory_[1] != "")
   {
     if(gpsReadyDir_ == "" || gpsLockAcq_)
     {
-      wrapAndWrite(mem, size, &tv, 1);
+      std::string secFileName = fmt::format("{}{}{:0>10d}_{:0>6d}{}", directory_[1],prefix_, tv.tv_sec,
+                                            tv.tv_usec, postfix_);
+      wrapAndWrite(mem, secFileName, size, 1);
     }
   }
   if(previewDir_ != "")
   {
-    previewWrapAndWrite(prevMem, prevSize, &tv, frameNumTrun);
+    std::string prevFileName = fmt::format("{}{}{:0>10d}_{:0>6d}{}", previewDir_,prefix_, tv.tv_sec,
+                                           tv.tv_usec, postfix_);
+    wrapAndWrite(prevMem, prevFileName, prevSize, 2);
+  }
+
+  //After files are written. Update the latest marker
+  {
+     int fd, ret;
+     size_t latestSize = primFileName.size();
+     fd = open(latestFileName_.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
+     if ((ret = write(fd, primFileName.c_str(), latestSize)) < 0) {
+       throw std::runtime_error("failed to write data");
+     }
+     close(fd);
   }
 
   frameNumTrun = (frameNumTrun + 1) % 1000;
@@ -165,19 +183,9 @@ struct timeval FileOutput::getAdjustedTime(int64_t timestamp_us)
   return tv;
 }
 
-void FileOutput::wrapAndWrite(void *mem, size_t size, struct timeval *timestamp, int index)
+void FileOutput::wrapAndWrite(void *mem, std::string fullFileName, size_t size, int index)
 {
-
-  std::stringstream fileNameGenerator;
-  fileNameGenerator << directory_[index];
-  fileNameGenerator << prefix_;
-  fileNameGenerator << std::setw(10) << std::setfill('0') << timestamp->tv_sec;
-  fileNameGenerator << "_";
-  fileNameGenerator << std::setw(6) << std::setfill('0') << timestamp->tv_usec;
-  fileNameGenerator << postfix_;
-  std::string fullFileName = fileNameGenerator.str();
-  fileNameGenerator << ".tmp";
-  std::string tempFileName = fileNameGenerator.str();
+  std::string tempFileName = fmt::format("{}.tmp", fullFileName);
 
   bool fileWritten = false;
   while(!fileWritten)
@@ -204,72 +212,31 @@ void FileOutput::wrapAndWrite(void *mem, size_t size, struct timeval *timestamp,
       fileWritten = true;
     }
   }
-  //After file is written, if we are the primary, set the latest marker
-  if(index == 0)
-  {
-    int fd, ret;
-    size_t latestSize = fullFileName.size();
-    fd = open(latestFileName_.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
-    if ((ret = write(fd, fullFileName.c_str(), latestSize)) < 0) {
-      throw std::runtime_error("failed to write data");
-    }
-    close(fd);
-  }
-}
-
-void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *timestamp, int64_t frameNum)
-{
-  std::stringstream fileNameGenerator;
-  fileNameGenerator << previewDir_;
-  fileNameGenerator << prefix_;
-  fileNameGenerator << std::setw(10) << std::setfill('0') << timestamp->tv_sec;
-  fileNameGenerator << "_";
-  fileNameGenerator << std::setw(6) << std::setfill('0') << timestamp->tv_usec;//picCounter;
-  fileNameGenerator << postfix_;
-  std::string fullFileName = fileNameGenerator.str();
-  fileNameGenerator << ".tmp";
-  std::string tempFileName = fileNameGenerator.str();
-
-  bool fileWritten = false;
-  while(!fileWritten)
-  {
-    if(fileManager_.canWrite(2))
-    {
-      fileManager_.addFile(2, size, tempFileName);
-      try
-      {
-        if(writeTempFile_)
-        {
-          writeFile(tempFileName, mem, size);
-          boost::filesystem::rename(tempFileName, fullFileName);
-        }
-        else
-        {
-          writeFile(fullFileName, mem, size);
-        }
-      }
-      catch (std::exception const &e)
-      {
-        std::cerr << "Failed to write downsampled file" << std::endl;
-      }
-      fileWritten = true;
-    }
-  }
 }
 
 void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
 {
   //open file name and assign fd
-  int fd, ret;
-  fd = open(fullFileName.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
-  if ((ret = write(fd, mem, size)) < 0) {
-    throw std::runtime_error("failed to write data");
+  size_t totalWritten = 0;
+  int nowWritten = 0;
+  int fd = open(fullFileName.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, 0644);
+  uint8_t *writerIndex = (uint8_t *)mem;
+  while(totalWritten < size)
+  {
+    nowWritten = write(fd, writerIndex, size - totalWritten);
+    if(nowWritten < 0){
+      throw std::runtime_error("failed to write data");
+    }else if (nowWritten == 0){
+      std::cerr << "no data written..." << std::endl;
+    }
+    writerIndex += nowWritten;
+    totalWritten += nowWritten;
   }
   close(fd);
   
   if (verbose_)
   {
-    std::cerr << "writing " << ret << " bytes to ";
+    std::cerr << "writing " << totalWritten << " bytes to ";
     std::cerr << fullFileName << std::endl;
   }
 }

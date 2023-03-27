@@ -261,7 +261,11 @@ void LibcameraApp::StartCamera()
 		else if (options_->framerate > 0)
 		{
 			int64_t frame_time = 1000000 / options_->framerate; // in us
-			controls_.set(controls::FrameDurationLimits, { frame_time, frame_time });
+            if (options_->shutter > 0 && options_->shutter < frame_time)
+            {
+                frame_time = options_->shutter;
+            }
+            controls_.set(controls::FrameDurationLimits, { frame_time, frame_time });
 		}
 	}
 

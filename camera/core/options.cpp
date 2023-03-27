@@ -56,6 +56,10 @@ void Options::json_manage_fs_cfg(nlohmann::json fileinfo_cfg)
   {
     gpsLockCheckDir = fileinfo_cfg.at("gpsLockCheckDir");
   }
+  if(fileinfo_cfg.contains("latestChkFileDir"))
+  {
+    latestChkFileDir = fileinfo_cfg.at("latestChkFileDir");
+  }
   if(fileinfo_cfg.contains("minfreespace"))
   {
       minfreespace = fileinfo_cfg.at("minfreespace");
@@ -170,7 +174,11 @@ void Options::json_manage_exp_cfg(nlohmann::json exposure_cfg)
   if(exposure_cfg.contains("sharpness"))
   {
     sharpness = exposure_cfg.at("sharpness");
-  } 
+  }
+  if(exposure_cfg.contains("shutter"))
+  {
+    shutter = exposure_cfg.at("shutter");
+  }
 }
 
 void Options::json_manage_cam_cfg(nlohmann::json camera_cfg)
