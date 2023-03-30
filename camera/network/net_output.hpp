@@ -20,7 +20,12 @@ public:
 
 protected:
 	void outputUnixSocket(void *mem, size_t size, int64_t timestamp_us, uint32_t flags);
-	void outputBuffer(void *mem, size_t size, int64_t timestamp_us, uint32_t flags) override;
+	void outputBuffer(void *mem,
+                      size_t size,
+                      void* prevMem,
+                      size_t prevSize,
+                      int64_t timestamp_us,
+                      uint32_t flags) override;
 
 private:
 	int fd_;

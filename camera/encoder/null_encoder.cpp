@@ -28,8 +28,9 @@ NullEncoder::~NullEncoder()
 
 // Push the buffer onto the output queue to be "encoded" and returned.
 void NullEncoder::EncodeBuffer(int fd, size_t size, void *mem, unsigned int width, unsigned int height,
-							   unsigned int stride, int64_t timestamp_us)
+							   unsigned int stride, int64_t timestamp_us, libcamera::ControlList metadata)
 {
+    (void)metadata;
 	std::lock_guard<std::mutex> lock(output_mutex_);
 	OutputItem item = { mem, size, timestamp_us };
 	output_queue_.push(item);
@@ -60,7 +61,7 @@ void NullEncoder::outputThread()
 					return;
 			}
 		}
-		output_ready_callback_(item.mem, item.length, item.timestamp_us, true);
+		output_ready_callback_(item.mem, item.length, nullptr, 0, item.timestamp_us, true);
 		input_done_callback_(nullptr);
 	}
 }

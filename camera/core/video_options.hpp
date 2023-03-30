@@ -37,6 +37,8 @@ struct VideoOptions : public Options
 			 "Save a timestamp file with this name")
 			("quality,q", value<int>(&quality)->default_value(50),
 			 "Set the MJPEG quality parameter (mjpeg only)")
+            ("qualityDwn,d", value<int>(&qualityDwn)->default_value(50),
+             "Set the MJPEG quality parameter for downsampled images (mjpeg only)")
 			("listen,l", value<bool>(&listen)->default_value(false)->implicit_value(true),
 			 "Listen for an incoming client network connection before sending data to the client")
 			("keypress,k", value<bool>(&keypress)->default_value(false)->implicit_value(true),
@@ -62,6 +64,7 @@ struct VideoOptions : public Options
 	std::string codec;
 	std::string save_pts;
 	int quality;
+    int qualityDwn;
 	bool listen;
 	bool keypress;
 	bool signal;
@@ -71,10 +74,55 @@ struct VideoOptions : public Options
 	uint32_t segment;
 	bool circular;
 
+        void json_manage_cam_cfg(nlohmann::json camera_cfg)
+        {
+            if(camera_cfg.contains("encoding"))
+            {
+                json_manage_enc_cfg(camera_cfg.at("encoding"));
+            }
+            
+        }
+
+        void json_manage_enc_cfg(nlohmann::json encoding_cfg)
+        {
+            if(encoding_cfg.contains("codec"))
+            {   
+                codec = encoding_cfg.at("codec");
+            }
+            if(encoding_cfg.contains("quality"))
+            {   
+                quality = encoding_cfg.at("quality");
+            }
+            if(encoding_cfg.contains("qualityDwn"))
+            {
+                qualityDwn = encoding_cfg.at("qualityDwn");
+            }
+        }
+        
+        virtual bool JSON_Option_Parse(nlohmann::json new_cfg) override
+        {
+            if (Options::JSON_Option_Parse(new_cfg) == false)
+            {
+                return false;
+            }
+            if(new_cfg.contains("camera"))
+            {
+                json_manage_cam_cfg(new_cfg.at("camera"));    
+            }
+            return true;
+        }
+        
 	virtual bool Parse(int argc, char *argv[]) override
 	{
 		if (Options::Parse(argc, argv) == false)
 			return false;
+
+               std::ifstream ifs(config_file.c_str());
+               if (ifs)
+               {
+                   nlohmann::json new_cfg = nlohmann::json::parse(ifs);
+                   JSON_Option_Parse(new_cfg);
+               }
 
 		if (width == 0)
 			width = 640;
@@ -112,6 +160,7 @@ struct VideoOptions : public Options
 		std::cerr << "    save-pts: " << save_pts << std::endl;
 		std::cerr << "    codec: " << codec << std::endl;
 		std::cerr << "    quality (for MJPEG): " << quality << std::endl;
+        std::cerr << "    downsampled quality (for MJPEG): " << qualityDwn << std::endl;
 		std::cerr << "    keypress: " << keypress << std::endl;
 		std::cerr << "    signal: " << signal << std::endl;
 		std::cerr << "    initial: " << initial << std::endl;

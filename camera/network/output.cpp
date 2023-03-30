@@ -9,6 +9,7 @@
 #include <stdexcept>
 
 #include "net_output.hpp"
+#include "file_output.hpp"
 #include "output.hpp"
 
 int64_t timestamp_now() 
@@ -44,7 +45,17 @@ void Output::Signal()
   enable_ = !enable_;
 }
 
-void Output::OutputReady(void *mem, size_t size, int64_t timestamp_us, bool keyframe)
+bool Output::GetContinueRunningStatus()
+{
+  return enable_;
+}
+
+void Output::OutputReady(void *mem,
+                         size_t size,
+                         void *prevMem,
+                         size_t prevSize,
+                         int64_t timestamp_us,
+                         bool keyframe)
 {
   int64_t ready_time = timestamp_now();
 
@@ -61,13 +72,21 @@ void Output::OutputReady(void *mem, size_t size, int64_t timestamp_us, bool keyf
 
   // Frig the timestamps to be continuous after a pause.
   if (flags & FLAG_RESTART)
+  {
     time_offset_ = timestamp_us - last_timestamp_;
+  }
   last_timestamp_ = timestamp_us - time_offset_;
 
   try{
-    outputBuffer(mem, size, last_timestamp_, flags);
+    outputBuffer(mem,
+                 size,
+                 prevMem,
+                 prevSize,
+                 last_timestamp_,
+                 flags);
   }
   catch(const std::exception& e){
+     std::cout << "Exception!" << std::endl;
      std::cout << e.what() << std::endl;
      Signal();
   }
@@ -81,15 +100,27 @@ void Output::OutputReady(void *mem, size_t size, int64_t timestamp_us, bool keyf
   }
 }
 
-void Output::outputBuffer(void *mem, size_t size, int64_t timestamp_us, uint32_t flags)
+void Output::outputBuffer(void *mem,
+                          size_t size,
+                          void *prevMem,
+                          size_t prevSize,
+                          int64_t timestamp_us,
+                          uint32_t flags)
 {
-  // Supply this so that a vanilla Output gives you an object that outputs no buffers.
+  // DEPRECATED. Separate FileOutput class created to handle file output. If a null/empty
+  // pipe is needed, then create an Output object and leave this empty.
 }
 
 Output *Output::Create(VideoOptions const *options)
 {
-  if (strncmp(options->output.c_str(), "udp://", 6) == 0 || strncmp(options->output.c_str(), "tcp://", 6) == 0 || strncmp(options->output.c_str(), "sck://", 6) == 0)
+  if (strncmp(options->output.c_str(), "udp://", 6) == 0 || 
+      strncmp(options->output.c_str(), "tcp://", 6) == 0 || 
+      strncmp(options->output.c_str(), "sck://", 6) == 0)
+  {
     return new NetOutput(options);
+  }
   else
-    return new Output(options);
+  {
+    return new FileOutput(options);
+  }
 }
