@@ -19,6 +19,8 @@
 #include <libcamera/control_ids.h>
 #include <libcamera/transform.h>
 
+#include <nlohmann/json.hpp>
+
 struct Options
 {
   Options() : options_("Valid options are", 120, 80)
@@ -47,10 +49,34 @@ struct Options
        "Set the output image width (0 = use default value)")
       ("height", value<unsigned int>(&height)->default_value(0),
        "Set the output image height (0 = use default value)")
-      ("timeout,t", value<uint64_t>(&timeout)->default_value(5000),
+      ("timeout,t", value<uint64_t>(&timeout)->default_value(0),
        "Time (in ms) for which program runs")
-      ("output,o", value<std::string>(&output),
-       "Set the output file name")
+      ("writeTmp", value<bool>(&writeTmp)->default_value(true)->implicit_value(true),
+       "Write images to a temporary filename before final name (default and implicitly true)")
+      ("output,o", value<std::string>(&output)->default_value(""),
+       "Set the output file directory or socket endpoint")
+      ("output_2nd", value<std::string>(&output_2nd)->default_value(""),
+       "Set the output file directory or socket endpoint")
+      ("downsampleStreamDir", value<std::string>(&downsampleStreamDir)->default_value(""),
+       "Set the downsample output file directory")
+      ("gpsLockCheckDir", value<std::string>(&gpsLockCheckDir)->default_value(""),
+       "Set the check directory for the GPS LOCK ACQUIRED file")
+      ("latestChkFileDir", value<std::string>(&latestChkFileDir)->default_value("/mnt/data/pic/"),
+       "Set the check directory for the latest picture")
+      ("prefix", value<std::string>(&prefix)->default_value(""),
+       "Set the beginning of output file names if provided")
+      ("minfreespace", value<std::uint64_t>(&minfreespace)->default_value(268435456),
+       "Minimum free space the partition must have in the primary space, otherwise delete photos."
+       "Default to 256MiB. Set to zero for unlimited")
+      ("maxusedspace", value<std::uint64_t>(&maxusedspace)->default_value(0),
+       "Maximum amount of space photos can occupy in the primary space, otherwise delete them."
+       "Default to 2GiB. Set to 0 for unlimited.")
+      ("minfreespace2", value<std::uint64_t>(&minfreespace_2nd)->default_value(33554432),
+       "Minimum free space the partition must have in removable media, otherwise delete photos."
+       "Default to 256MiB. Set to zero for unlimited")
+      ("maxusedspace2", value<std::uint64_t>(&maxusedspace_2nd)->default_value(0),
+       "Maximum amount of space photos can occupy in removable media, otherwise delete them."
+       "Default to 2GiB. Set to zero for unlimited")        
       ("post-process-file", value<std::string>(&post_process_file),
        "Set the file name for configuring the post-processing")
       ("rawfull", value<bool>(&rawfull)->default_value(false)->implicit_value(true),
@@ -59,7 +85,7 @@ struct Options
       ("vflip", value<bool>(&vflip_)->default_value(false)->implicit_value(true), "Request a vertical flip transform")
       ("rotation", value<int>(&rotation_)->default_value(0), "Request an image rotation, 0 or 180")
       ("roi", value<std::string>(&roi)->default_value("0,0,0,0"), "Set region of interest (digital zoom) e.g. 0.25,0.25,0.5,0.5")
-      ("shutter", value<float>(&shutter)->default_value(0),
+      ("shutter", value<int>(&shutter)->default_value(0),
        "Set a fixed shutter speed")
       ("analoggain", value<float>(&gain)->default_value(0),
        "Set a fixed gain value (synonym for 'gain' option)")
@@ -112,7 +138,17 @@ struct Options
   bool netconfig;
   uint64_t timeout; // in ms
   std::string config_file;
+  std::string prefix;
+  bool writeTmp;
   std::string output;
+  std::string output_2nd;
+  std::string latestChkFileDir;
+  std::string downsampleStreamDir;
+  std::string gpsLockCheckDir;
+  uint64_t minfreespace;
+  uint64_t maxusedspace;
+  uint64_t minfreespace_2nd;
+  uint64_t maxusedspace_2nd;
   std::string post_process_file;
   unsigned int width;
   unsigned int height;
@@ -120,7 +156,7 @@ struct Options
   libcamera::Transform transform;
   std::string roi;
   float roi_x, roi_y, roi_width, roi_height;
-  float shutter;
+  int shutter;
   float gain;
   std::string metering;
   int metering_index;
@@ -140,6 +176,7 @@ struct Options
   float sharpness;
   float framerate;
   std::string denoise;
+  int quality;
   std::string info_text;
   unsigned int viewfinder_width;
   unsigned int viewfinder_height;
@@ -147,13 +184,22 @@ struct Options
   unsigned int lores_width;
   unsigned int lores_height;
 
-  virtual bool JSONParse();
+  virtual bool JSON_Option_Parse(nlohmann::json new_cfg);
 
   virtual bool Parse(int argc, char *argv[]);
   virtual void Print() const;
 
 protected:
   boost::program_options::options_description options_;
+
+  void json_manage_cx_cfg(nlohmann::json connection_cfg);
+  void json_manage_fs_cfg(nlohmann::json fileinfo_cfg);
+  void json_manage_rec_cfg(nlohmann::json recording_cfg);
+  void json_manage_enc_cfg(nlohmann::json encoding_cfg);
+  void json_manage_cb_cfg(nlohmann::json color_cfg);
+  void json_manage_exp_cfg(nlohmann::json exposure_cfg);
+  void json_manage_cam_cfg(nlohmann::json camera_cfg);
+  void json_manage_adj_cfg(nlohmann::json adjustment_cfg); 
 
 private:
   bool hflip_;

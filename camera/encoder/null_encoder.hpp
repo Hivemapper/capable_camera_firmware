@@ -21,7 +21,7 @@ public:
 	NullEncoder(VideoOptions const *options);
 	~NullEncoder();
 	void EncodeBuffer(int fd, size_t size, void *mem, unsigned int width, unsigned int height, unsigned int stride,
-					  int64_t timestamp_us) override;
+					  int64_t timestamp_us, libcamera::ControlList metadata) override;
 
 private:
 	void outputThread();

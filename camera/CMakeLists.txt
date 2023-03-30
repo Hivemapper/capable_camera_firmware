@@ -54,8 +54,8 @@ add_executable(libcamera-bridge app.cpp)
 target_link_libraries(libcamera-bridge libcamera_app encoders network)
 
 set(EXECUTABLES libcamera-bridge)
-set(EXEC_SCRIPTS bridge.sh)
-set(SUPPORT_FILES imx477.json)
+set(EXEC_SCRIPTS bridge.sh preview.sh)
+set(SUPPORT_FILES imx477.json config.json)
 
 install(TARGETS ${EXECUTABLES} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS ${EXEC_SCRIPTS} DESTINATION ${CMAKE_INSTALL_BINDIR})

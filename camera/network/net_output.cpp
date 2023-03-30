@@ -174,8 +174,16 @@ void NetOutput::outputUnixSocket(void *mem, size_t size, int64_t timestamp_us, u
 	// 	std::cerr << "  wrote " << ret << "\n";
 }
 
-void NetOutput::outputBuffer(void *mem, size_t size, int64_t timestamp_us, uint32_t /*flags*/)
+void NetOutput::outputBuffer(void *mem,
+                             size_t size,
+                             void *prevMem,
+                             size_t prevSize,
+                             int64_t timestamp_us,
+                             uint32_t /*flags*/)
 {
+  (void)prevMem;
+  (void)prevSize;
+
 	if (unix_socket_) {
 		outputUnixSocket(mem, size, timestamp_us, 0);
 		return;

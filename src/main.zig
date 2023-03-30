@@ -143,29 +143,27 @@ pub fn main() anyerror!void {
     var led_ctx = threads.HeartBeatContext{ .led = led, .idx = 2 };
     try loop.runDetached(allocator, threads.heartbeat_thread, .{led_ctx});
 
-    var gnss_handle = spi.SPI{ .fd = spi01_fd };
-    slog.debug("SPI01 configure {any}", .{gnss_handle.configure(0, 5500)});
-
-    var pos = gnss.init(gnss_handle);
-    var gnss_interval = @divFloor(1000, @intCast(u16, cfg.camera.encoding.fps));
-
-    if (cfg.gnss.reset_on_start) {
-        pos.reset(null);
-    }
-
-    pos.configure();
-    pos.set_interval(gnss_interval);
-
-    threads.gnss_ctx = threads.GnssContext{
-        .led = led,
-        .gnss = &pos,
-        .interval = gnss_interval,
-        .config = cfg.gnss,
-        .trace_dir = cfg.recording.dir,
-        .allocator = allocator,
-    };
-
-    try loop.runDetached(allocator, threads.gnss_thread, .{threads.gnss_ctx});
+    //var gnss_handle = spi.SPI{ .fd = spi01_fd };
+    //slog.debug("SPI01 configure {any}", .{gnss_handle.configure(0, 5500)});
+    //
+    //var pos = gnss.init(gnss_handle);
+    //var gnss_interval = @divFloor(1000, @intCast(u16, cfg.camera.fps));
+    //
+    //if (cfg.gnss.reset_on_start) {
+    //    pos.reset(null);
+    //}
+    //
+    //pos.configure();
+    //pos.set_interval(gnss_interval);
+    //
+    //threads.gnss_ctx = threads.GnssContext{
+    //    .led = led,
+    //    .gnss = &pos,
+    //    .interval = gnss_interval,
+    //    .config = cfg.gnss,
+    //};
+    //
+    //try loop.runDetached(allocator, threads.gnss_thread, .{threads.gnss_ctx});
 
     // This will error if either socket doesn't exists.  We ignore that error
     std.fs.cwd().deleteFile(cfg.recording.connection.socket) catch {};

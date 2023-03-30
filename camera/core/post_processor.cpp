@@ -32,12 +32,9 @@ void PostProcessor::Read(std::string const &filename)
 		PostProcessingStage *stage = createPostProcessingStage(key_and_value.first.c_str());
 		if (stage)
 		{
-			std::cerr << "Reading post processing stage \"" << key_and_value.first << "\"" << std::endl;
 			stage->Read(key_and_value.second);
 			stages_.push_back(StagePtr(stage));
 		}
-		else
-			std::cerr << "No post processing stage found for \"" << key_and_value.first << "\"" << std::endl;
 	}
 }
 
@@ -92,8 +89,8 @@ void PostProcessor::Process(CompletedRequestPtr &request)
 
 	std::promise<bool> promise;
 	auto process_fn = [this](CompletedRequestPtr &request, std::promise<bool> promise) {
-		bool drop_request = false;
-		for (auto &stage : stages_)
+        bool drop_request = false;
+        for (auto &stage : stages_)
 		{
 			if (stage->Process(request))
 			{

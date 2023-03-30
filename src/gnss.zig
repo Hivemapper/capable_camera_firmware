@@ -303,7 +303,6 @@ pub const PVT = struct {
 
 pub const fake_pvt = PVT {
     .age = 0,
-    .received_at =  0,
     .timestamp = undefined,
     .time = undefined,
     .longitude = 0.0,

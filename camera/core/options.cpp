@@ -9,8 +9,210 @@
 
 #include "core/options.hpp"
 
-bool Options::JSONParse()
+void Options::json_manage_cx_cfg(nlohmann::json connection_cfg)
 {
+  std::string prefix_output = "";
+  std::string postfix_output = "";
+  bool setOutput = false;
+  
+  if(connection_cfg.contains("socket"))
+  {
+      postfix_output = connection_cfg.at("socket");
+      setOutput = true;
+  }
+  if(connection_cfg.contains("socketType"))
+  {
+      prefix_output = connection_cfg.at("socketType");
+      setOutput = true;
+  }
+  
+  if(setOutput)
+  {
+      output = prefix_output + postfix_output;  
+  }
+}
+
+void Options::json_manage_fs_cfg(nlohmann::json fileinfo_cfg)
+{ 
+  if(fileinfo_cfg.contains("prefix"))
+  {
+      prefix = fileinfo_cfg.at("prefix");
+  }
+  if(fileinfo_cfg.contains("writeTmp"))
+  {
+      writeTmp = fileinfo_cfg.at("writeTmp");
+  }
+  if(fileinfo_cfg.contains("output"))
+  {
+      output = fileinfo_cfg.at("output");
+  }
+  if(fileinfo_cfg.contains("output2"))
+  {
+      output_2nd = fileinfo_cfg.at("output2");
+  }
+  if(fileinfo_cfg.contains("downsampleStreamDir"))
+  {
+    downsampleStreamDir = fileinfo_cfg.at("downsampleStreamDir");
+  }
+  if(fileinfo_cfg.contains("gpsLockCheckDir"))
+  {
+    gpsLockCheckDir = fileinfo_cfg.at("gpsLockCheckDir");
+  }
+  if(fileinfo_cfg.contains("latestChkFileDir"))
+  {
+    latestChkFileDir = fileinfo_cfg.at("latestChkFileDir");
+  }
+  if(fileinfo_cfg.contains("minfreespace"))
+  {
+      minfreespace = fileinfo_cfg.at("minfreespace");
+  }
+  if(fileinfo_cfg.contains("maxusedspace"))
+  {
+      maxusedspace = fileinfo_cfg.at("maxusedspace");
+  }
+  if(fileinfo_cfg.contains("minfreespace2"))
+  {
+      minfreespace_2nd = fileinfo_cfg.at("minfreespace2");
+  }
+  if(fileinfo_cfg.contains("maxusedspace2"))
+  {
+      maxusedspace_2nd = fileinfo_cfg.at("maxusedspace2");
+  }
+  
+}
+
+void Options::json_manage_rec_cfg(nlohmann::json recording_cfg)
+{
+  if(recording_cfg.contains("connection"))
+  {
+    json_manage_cx_cfg(recording_cfg.at("connection"));
+  }
+  if(recording_cfg.contains("directory"))
+  {
+    json_manage_fs_cfg(recording_cfg.at("directory"));
+  }
+}
+
+void Options::json_manage_enc_cfg(nlohmann::json encoding_cfg)
+{
+  if(encoding_cfg.contains("fps"))
+  {
+    framerate = encoding_cfg.at("fps");
+  }
+  if(encoding_cfg.contains("width"))
+  {
+    width = encoding_cfg.at("width");
+  }
+  if(encoding_cfg.contains("height"))
+  {  
+    height = encoding_cfg.at("height");
+  }
+  if(encoding_cfg.contains("denoise"))
+  {
+    denoise = encoding_cfg.at("denoise");
+  }
+}
+
+void Options::json_manage_adj_cfg(nlohmann::json adjustment_cfg)
+{
+  if(adjustment_cfg.contains("rotation"))
+  {
+    rotation_ = adjustment_cfg.at("rotation");
+  }
+  if(adjustment_cfg.contains("hflip"))
+  {
+    hflip_ = adjustment_cfg.at("hflip");
+  } 
+  if(adjustment_cfg.contains("vflip"))
+  {
+    vflip_ = adjustment_cfg.at("vflip");
+  }  
+}
+
+void Options::json_manage_cb_cfg(nlohmann::json color_cfg)
+{
+  if(color_cfg.contains("awb"))
+  {
+    awb = color_cfg.at("awb");
+  }
+  if(color_cfg.contains("awbGains"))
+  {
+    auto arrayFormat = color_cfg.at("awbGains");
+    awb_gain_r = arrayFormat[0];
+    awb_gain_b = arrayFormat[1];
+  }
+  if(color_cfg.contains("brightness"))
+  {
+    brightness = color_cfg.at("brightness");
+  }
+  if(color_cfg.contains("contrast"))
+  {
+    contrast = color_cfg.at("contrast");
+  }
+  if(color_cfg.contains("saturation"))
+  {
+    saturation = color_cfg.at("saturation");
+  } 
+}
+
+void Options::json_manage_exp_cfg(nlohmann::json exposure_cfg)
+{
+  if(exposure_cfg.contains("exposure"))
+  {
+    exposure = exposure_cfg.at("exposure");
+  }
+  if(exposure_cfg.contains("ev"))
+  {
+    ev = exposure_cfg.at("ev");
+  }
+  if(exposure_cfg.contains("fixedGain"))
+  {
+    gain = exposure_cfg.at("fixedGain");
+  }
+  if(exposure_cfg.contains("metering"))
+  {
+    metering = exposure_cfg.at("metering");
+  }
+  if(exposure_cfg.contains("sharpness"))
+  {
+    sharpness = exposure_cfg.at("sharpness");
+  }
+  if(exposure_cfg.contains("shutter"))
+  {
+    shutter = exposure_cfg.at("shutter");
+  }
+}
+
+void Options::json_manage_cam_cfg(nlohmann::json camera_cfg)
+{
+  if(camera_cfg.contains("encoding"))
+  {
+    json_manage_enc_cfg(camera_cfg.at("encoding"));
+  }
+  if(camera_cfg.contains("colorBalance"))
+  {
+    json_manage_cb_cfg(camera_cfg.at("colorBalance"));
+  }
+  if(camera_cfg.contains("exposure"))
+  {
+    json_manage_exp_cfg(camera_cfg.at("exposure"));
+  }
+  if(camera_cfg.contains("adjustment"))
+  {
+    json_manage_adj_cfg(camera_cfg.at("adjustment"));
+  }
+}
+
+bool Options::JSON_Option_Parse(nlohmann::json new_cfg)
+{
+    if(new_cfg.contains("camera"))
+    {
+      json_manage_cam_cfg(new_cfg.at("camera"));    
+    }
+    if(new_cfg.contains("recording"))
+    {
+      json_manage_rec_cfg(new_cfg.at("recording"));
+    }
     return true;
 }
 
@@ -22,12 +224,13 @@ bool Options::Parse(int argc, char *argv[])
     // Read options from the command line
     store(parse_command_line(argc, argv, options_), vm);
     notify(vm);
+    
     // Read options from a file if specified
     std::ifstream ifs(config_file.c_str());
     if (ifs)
     {
-      store(parse_config_file(ifs, options_), vm);
-      notify(vm);
+        nlohmann::json new_cfg = nlohmann::json::parse(ifs);
+        JSON_Option_Parse(new_cfg);
     }
 
     if (help)
@@ -121,6 +324,10 @@ void Options::Print() const
     std::cout << "    width: " << width << std::endl;
     std::cout << "    height: " << height << std::endl;
     std::cout << "    output: " << output << std::endl;
+    std::cout << "    prefix: " << prefix << std::endl;
+    std::cout << "    writeTmp: " << writeTmp << std::endl;
+    std::cout << "    min free space: " << minfreespace << std::endl;
+    std::cout << "    max used space: " << maxusedspace << std::endl; 
     std::cout << "    post_process_file: " << post_process_file << std::endl;
     std::cout << "    rawfull: " << rawfull << std::endl;
     std::cout << "    transform: " << transformToString(transform) << std::endl;
