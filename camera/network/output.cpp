@@ -54,6 +54,8 @@ void Output::OutputReady(void *mem,
                          size_t size,
                          void *prevMem,
                          size_t prevSize,
+                         void *exifMem,
+                         size_t exifSize,
                          int64_t timestamp_us,
                          bool keyframe)
 {
@@ -82,6 +84,8 @@ void Output::OutputReady(void *mem,
                  size,
                  prevMem,
                  prevSize,
+                 exifMem,
+                 exifSize,
                  last_timestamp_,
                  flags);
   }
@@ -104,6 +108,8 @@ void Output::outputBuffer(void *mem,
                           size_t size,
                           void *prevMem,
                           size_t prevSize,
+                          void *exifMem,
+                          size_t exifSize,
                           int64_t timestamp_us,
                           uint32_t flags)
 {

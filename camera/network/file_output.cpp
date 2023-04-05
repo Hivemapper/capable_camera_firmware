@@ -17,6 +17,8 @@
 
 #include "file_output.hpp"
 
+static const unsigned char exif_header[] = { 0xff, 0xd8, 0xff, 0xe1 };
+
 FileOutput::FileOutput(VideoOptions const *options) : Output(options)
 {
 
@@ -96,6 +98,8 @@ void FileOutput::outputBuffer(void *mem,
                               size_t size,
                               void *prevMem,
                               size_t prevSize,
+                              void *exifMem,
+                              size_t exifSize,
                               int64_t timestamp_us,
                               uint32_t /*flags*/)
 {
@@ -115,7 +119,7 @@ void FileOutput::outputBuffer(void *mem,
                                          tv.tv_usec, postfix_);
   if(directory_[0] != "")
   {
-    wrapAndWrite(mem, primFileName, size, 0);
+    wrapAndWrite(mem, primFileName, size, exifMem, exifSize, 0);
   }
   if(directory_[1] != "")
   {
@@ -123,14 +127,14 @@ void FileOutput::outputBuffer(void *mem,
     {
       std::string secFileName = fmt::format("{}{}{:0>10d}_{:0>6d}{}", directory_[1],prefix_, tv.tv_sec,
                                             tv.tv_usec, postfix_);
-      wrapAndWrite(mem, secFileName, size, 1);
+      wrapAndWrite(mem, secFileName, size, exifMem, exifSize, 1);
     }
   }
   if(previewDir_ != "")
   {
     std::string prevFileName = fmt::format("{}{}{:0>10d}_{:0>6d}{}", previewDir_,prefix_, tv.tv_sec,
                                            tv.tv_usec, postfix_);
-    wrapAndWrite(prevMem, prevFileName, prevSize, 2);
+    wrapAndWrite(prevMem, prevFileName, prevSize, exifMem, exifSize, 2);
   }
 
   //After files are written. Update the latest marker
@@ -197,12 +201,12 @@ void FileOutput::wrapAndWrite(void *mem, std::string fullFileName, size_t size, 
         fileManager_.addFile(index, size, fullFileName);
         if(writeTempFile_)
         {
-            writeFile(tempFileName, mem, size);
+            writeFile(tempFileName, mem, size, exifMem, exifSize);
             boost::filesystem::rename(tempFileName, fullFileName);
         }
         else
         {
-            writeFile(fullFileName, mem, size);
+            writeFile(fullFileName, mem, size, exifMem, exifSize);
         }
       }
       catch (std::exception const &e)
@@ -221,6 +225,33 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
   int nowWritten = 0;
   int fd = open(fullFileName.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_NONBLOCK, 0644);
   uint8_t *writerIndex = (uint8_t *)mem;
+  uint8_t exifLenBuff[2];
+
+  //if we have an exif header then shift the writerIndex by 20
+  if(exifSize > 0)
+  {
+      writerIndex += 20;
+      size -= 20;
+
+      exifLenBuff[0] = (exifSize + 2) >> 8;
+      exifLenBuff[1] = (exifSize + 2) & 0xff;
+      while(totalWritten < 4)
+      {
+        totalWritten += write(fd, exif_header, 4);
+      }
+      totalWritten = 0;
+      while(totalWritten < 2)
+      {
+        totalWritten += write(fd, exifLenBuff, 2);
+      }
+      totalWritten = 0;
+      while(totalWritten < exifSize)
+      {
+        totalWritten += write(fd, exifMem, exifSize);
+      }
+  }
+
+  totalWritten = 0;
   while(totalWritten < size)
   {
     nowWritten = write(fd, writerIndex, size - totalWritten);
@@ -236,7 +267,8 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
   
   if (verbose_)
   {
-    std::cerr << "writing " << totalWritten << " bytes to ";
+    size_t fullTotal = 6 + exifSize + totalWritten;
+    std::cerr << "writing " << fullTotal << " bytes to ";
     std::cerr << fullFileName << std::endl;
   }
 }

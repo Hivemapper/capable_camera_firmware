@@ -205,6 +205,11 @@ MjpegEncoder::MjpegEncoder(VideoOptions const *options)
       {
         doPrimsample_ = false;
       }
+      doExif_ = false;
+      if(options_->doExif)
+      {
+          doExif_ = true;
+      }
     }
     didInitDSI_ = false;
 }
@@ -222,12 +227,18 @@ MjpegEncoder::~MjpegEncoder()
 void MjpegEncoder::EncodeBuffer(int fd, size_t size, void *mem, unsigned int width, unsigned int height,
 								unsigned int stride, int64_t timestamp_us, libcamera::ControlList metadata)
 {
+    int32_t newExpoTime = metadata.get(libcamera::controls::ExposureTime);
+    float   newAlogGain = metadata.get(libcamera::controls::AnalogueGain);
+    float   newDigiGain = metadata.get(libcamera::controls::DigitalGain);
     EncodeItem item = { mem,
                         size,
                         width,
                         height,
                         stride,
                         timestamp_us,
+                        newExpoTime,
+                        newAlogGain,
+                        newDigiGain,
                         index_++ };
 	std::lock_guard<std::mutex> lock(encode_mutex_);
     if(!didInitDSI_)
@@ -258,12 +269,13 @@ void MjpegEncoder::initDownSampleInfo(EncodeItem &source)
   didInitDSI_ = true;
 }
 
-void MjpegEncoder::CreateExifData(libcamera::ControlList metadata,
+void MjpegEncoder::CreateExifData(EncodeItem &source,
                                   uint8_t *&exif_buffer,
-                                  unsigned int &exif_len)
+                                  size_t &exif_len)
 {
-    exif_buffer = nullptr;
     ExifData *exif = nullptr;
+    exif_buffer = nullptr;
+    exif_len = 0;
 
     try
     {
@@ -295,36 +307,32 @@ void MjpegEncoder::CreateExifData(libcamera::ControlList metadata,
         exif_set_string(entry, time_string);
 
         // Now add some tags filled in from the image metadata.
-        auto exposure_time = metadata.get(libcamera::controls::ExposureTime);
-        if (exposure_time)
-        {
-          entry = exif_create_tag(exif, EXIF_IFD_EXIF, EXIF_TAG_EXPOSURE_TIME);
-          ExifRational exposure = { (ExifLong)exposure_time, 1000000 };
-          exif_set_rational(entry->data, exif_byte_order, exposure);
-        }
+        entry = exif_create_tag(exif, EXIF_IFD_EXIF, EXIF_TAG_EXPOSURE_TIME);
+        ExifRational exposure = { (ExifLong)source.expo_time, 1000000 };
+        exif_set_rational(entry->data, exif_byte_order, exposure);
 
-        auto ag = metadata.get(libcamera::controls::AnalogueGain);
-        if (ag)
-        {
-            entry = exif_create_tag(exif, EXIF_IFD_EXIF, EXIF_TAG_ISO_SPEED_RATINGS);
-            auto dg = metadata.get(libcamera::controls::DigitalGain);
-            float gain;
-            gain = ag * (dg ? dg : 1.0);
-            exif_set_short(entry->data, exif_byte_order, 100 * gain);
-        }
+        entry = exif_create_tag(exif, EXIF_IFD_EXIF, EXIF_TAG_ISO_SPEED_RATINGS);
+        float gain = source.alog_gain * source.digi_gain;
+        exif_set_short(entry->data, exif_byte_order, 100 * gain);
 
-        // And create the EXIF data buffer *again*.
-        exif_data_save_data(exif, &exif_buffer, &exif_len);
+        // And create the EXIF data buffer
+        unsigned int exifWriteLen;
+        exif_data_save_data(exif, &exif_buffer, &exifWriteLen);
         exif_data_unref(exif);
+        exif_len = exifWriteLen;
         exif = nullptr;
     }
     catch (std::exception const &e)
     {
         if (exif)
             exif_data_unref(exif);
-        //if (exif_buffer)
-        //    free(exif_buffer);
+        if (exif_buffer)
+            free(exif_buffer);
         throw;
+    }
+    if(options_->verbose)
+    {
+        std::cout << "Generated " << exif_len << " EXIF bytes" << std::endl;
     }
 }
 
@@ -462,7 +470,7 @@ void MjpegEncoder::encodeThread(int num)
   uint8_t *exif_buffer[NUM_FRAMES];
   size_t buffer_len[NUM_FRAMES];
   size_t buffer_prev_len[NUM_FRAMES];
-  size_t exif_buffer_len[NUM_FRAMES];
+  size_t exif_buffer_lens[NUM_FRAMES];
   for (int ii = 0; ii < NUM_FRAMES; ii+=1)
   {
     encoded_buffer[ii] = (uint8_t*)malloc(MAX_FRAME_MEMORY);
@@ -470,7 +478,7 @@ void MjpegEncoder::encodeThread(int num)
     exif_buffer[ii] = nullptr;
     buffer_len[ii] = 0;
     buffer_prev_len[ii] = 0;
-    exif_buffer_len[ii] = 0;
+    exif_buffer_lens[ii] = 0;
   }
 
   while (true) {
@@ -499,6 +507,10 @@ void MjpegEncoder::encodeThread(int num)
     index = frames % NUM_FRAMES;
     {
       auto start_time = std::chrono::high_resolution_clock::now();
+      if(doExif_)
+      {
+          CreateExifData(encode_item, exif_buffer[index], exif_buffer_lens[index]);
+      }
       if(doPrimsample_)
       {
           encodeJPEG(cinfoMain, encode_item, encoded_buffer[index], buffer_len[index], num);
@@ -526,7 +538,7 @@ void MjpegEncoder::encodeThread(int num)
                                encoded_prev_buffer[index],
                                buffer_prev_len[index],
                                exif_buffer[index],
-                               exif_buffer_len[index],
+                               exif_buffer_lens[index],
                                encode_item.timestamp_us,
                                encode_item.index };
     {
@@ -572,8 +584,11 @@ void MjpegEncoder::outputThread()
                              item.bytes_used,
                              item.preview_mem,
                              item.preview_bytes_used,
+                             item.exif_mem,
+                             item.exif_bytes_used,
                              item.timestamp_us,
                              true);
+      free(item.exif_mem);
       index+=1;
   }
 }
