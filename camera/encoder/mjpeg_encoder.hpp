@@ -43,6 +43,7 @@ private:
 	bool abort_;
     bool doDownsample_;
     bool doPrimsample_;
+    bool doExif_;
 	uint64_t index_;
 
 	struct EncodeItem
@@ -53,6 +54,9 @@ private:
 		unsigned int height;
 		unsigned int stride;
 		int64_t timestamp_us;
+        int32_t expo_time;
+        float   alog_gain;
+        float   digi_gain;
 		uint64_t index;
 	};
 	std::queue<EncodeItem> encode_queue_;
@@ -70,6 +74,10 @@ private:
 
     void initDownSampleInfo(EncodeItem &source);
 
+    void CreateExifData(EncodeItem &source,
+                        uint8_t *&exif_buffer,
+                        size_t &exif_len);
+
 	void encodeJPEG(struct jpeg_compress_struct &cinfo,
                     EncodeItem &item,
                     uint8_t *&encoded_buffer,
@@ -80,9 +88,7 @@ private:
                               uint8_t *&encoded_buffer,
                               size_t &buffer_len,
                               int num);
-    void CreateExifData(libcamera::ControlList metadata,
-                        uint8_t *&exif_buffer,
-                        unsigned int &exif_len);
+
 	struct OutputItem
 	{
 		void *mem;

@@ -178,11 +178,15 @@ void NetOutput::outputBuffer(void *mem,
                              size_t size,
                              void *prevMem,
                              size_t prevSize,
+                             void *exifMem,
+                             size_t exifSize,
                              int64_t timestamp_us,
                              uint32_t /*flags*/)
 {
   (void)prevMem;
   (void)prevSize;
+  (void)exifMem;
+  (void)exifSize;
 
 	if (unix_socket_) {
 		outputUnixSocket(mem, size, timestamp_us, 0);

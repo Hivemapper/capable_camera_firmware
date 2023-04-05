@@ -40,6 +40,8 @@ struct Options
       ("netconfig,n", value<bool>(&netconfig)->default_value(false)->implicit_value(true), 
         "Connect to the network endpoint of the camera firmware and listen for configuration "
         "changes over the network")
+      ("doExif", value<bool>(&doExif)->default_value(false)->implicit_value(true),
+       "Add EXIF headers to images generated")
       ("info-text", value<std::string>(&info_text)->default_value("#%frame (%fps fps) exp %exp ag %ag dg %dg"),
        "Sets the information string on the titlebar. Available values:\n"
        "%frame (frame number)\n%fps (framerate)\n%exp (shutter speed)\n%ag (analogue gain)"
@@ -169,6 +171,7 @@ struct Options
   float awb_gain_r;
   float awb_gain_b;
   bool flush;
+  bool doExif;
   unsigned int wrap;
   float brightness;
   float contrast;
