@@ -3,6 +3,7 @@
     "directory": {
       "prefix": "",
       "output": "/mnt/data/pic/",
+      "output2": "/media/usb0/recording/",
       "maxusedspace": 21474836480,
       "minfreespace": 64000000,
       "minfreespace2": 32000000,
