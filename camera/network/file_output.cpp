@@ -187,7 +187,12 @@ struct timeval FileOutput::getAdjustedTime(int64_t timestamp_us)
   return tv;
 }
 
-void FileOutput::wrapAndWrite(void *mem, std::string fullFileName, size_t size, int index)
+void FileOutput::wrapAndWrite(void *mem,
+                              std::string fullFileName,
+                              size_t size,
+                              void *exifMem,
+                              size_t exifSize,
+                              int index)
 {
   std::string tempFileName = fmt::format("{}.tmp", fullFileName);
 
