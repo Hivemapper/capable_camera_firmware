@@ -126,9 +126,6 @@ static void execute_stream(LibcameraEncoder &app, VideoOptions *options)
 
 int main(int argc, char *argv[])
 {
-  bool optionsValid = false;
-  bool setupNetCfg = false;
-  bool end_exec = true;
   try
   {
     LibcameraEncoder app;
