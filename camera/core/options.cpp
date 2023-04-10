@@ -111,6 +111,10 @@ void Options::json_manage_enc_cfg(nlohmann::json encoding_cfg)
   {
     denoise = encoding_cfg.at("denoise");
   }
+  if(encoding_cfg.contains("doEXIF"))
+  {
+    doExif = encoding_cfg.at("doEXIF");
+  }
 }
 
 void Options::json_manage_adj_cfg(nlohmann::json adjustment_cfg)
@@ -319,7 +323,8 @@ void Options::Print() const
     std::cout << "    verbose: " << verbose << std::endl;
     if (!config_file.empty())
       std::cout << "    config file: " << config_file << std::endl;
-    std::cout << "    info_text:" << info_text << std::endl;
+    std::cout << "    info_text: " << info_text << std::endl;
+    std::cout << "    exif: " << doExif << std::endl;
     std::cout << "    timeout: " << timeout << std::endl;
     std::cout << "    width: " << width << std::endl;
     std::cout << "    height: " << height << std::endl;

@@ -13,7 +13,7 @@
 #include <libcamera/controls.h>
 
 typedef std::function<void(void *)> InputDoneCallback;
-typedef std::function<void(void *, size_t, void *, size_t, int64_t, bool)> OutputReadyCallback;
+typedef std::function<void(void *, size_t, void *, size_t, void *, size_t, int64_t, bool)> OutputReadyCallback;
 
 class Encoder
 {
