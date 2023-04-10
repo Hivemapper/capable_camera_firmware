@@ -223,7 +223,7 @@ void FileOutput::wrapAndWrite(void *mem,
   }
 }
 
-void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
+void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size, void *exifMem, size_t exifSize)
 {
   //open file name and assign fd
   size_t totalWritten = 0;
