@@ -16,6 +16,7 @@
       "height": 3040,
       "codec": "mjpeg",
       "quality": 50,
+      "scale_quality": 90,
       "scale_width": 2048,
       "scale_height": 1080,
       "crop_width": 3840,

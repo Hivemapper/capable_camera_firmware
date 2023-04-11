@@ -37,6 +37,10 @@ struct VideoOptions : public Options
 			 "Save a timestamp file with this name")
 			("quality,q", value<int>(&quality)->default_value(50),
 			 "Set the MJPEG quality parameter (mjpeg only)")
+			("quality,q", value<int>(&quality)->default_value(50),
+			 "Set the MJPEG quality parameter (mjpeg only)")
+            ("scale_quality,q", value<int>(&scale_quality)->default_value(50),
+             "Set the MJPEG quality parameter (mjpeg only)")
             ("scale_width,d", value<int>(&scale_width)->default_value(50),
             "scale width")
             ("scale_height,d", value<int>(&scale_height)->default_value(50),
@@ -72,6 +76,7 @@ struct VideoOptions : public Options
 	std::string codec;
 	std::string save_pts;
 	int quality;
+	int scale_quality;
     int scale_width;
     int scale_height;
     int crop_width;
@@ -104,6 +109,10 @@ struct VideoOptions : public Options
             if(encoding_cfg.contains("quality"))
             {   
                 quality = encoding_cfg.at("quality");
+            }
+            if(encoding_cfg.contains("scale_quality"))
+            {
+                scale_quality = encoding_cfg.at("scale_quality");
             }
             if(encoding_cfg.contains("scale_width"))
             {
@@ -187,6 +196,7 @@ struct VideoOptions : public Options
 		std::cerr << "    inline: " << inline_headers << std::endl;
 		std::cerr << "    save-pts: " << save_pts << std::endl;
 		std::cerr << "    codec: " << codec << std::endl;
+		std::cerr << "    scale_quality (for MJPEG): " << scale_quality << std::endl;
 		std::cerr << "    quality (for MJPEG): " << quality << std::endl;
         std::cerr << "    scale width: " << scale_width << std::endl;
         std::cerr << "    scale height: " << scale_height << std::endl;

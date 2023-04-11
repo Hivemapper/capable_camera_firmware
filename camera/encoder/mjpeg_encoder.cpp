@@ -481,7 +481,7 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
 
     jpeg_set_defaults(&cinfo);
     cinfo.raw_data_in = TRUE;
-    jpeg_set_quality(&cinfo, 80, TRUE);
+    jpeg_set_quality(&cinfo, options_->scale_quality, TRUE);
     encoded_buffer = nullptr;
     buffer_len = 0;
     jpeg_mem_len_t jpeg_mem_len;
