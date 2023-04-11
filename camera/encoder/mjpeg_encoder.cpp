@@ -453,6 +453,10 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
     uint8_t *scale_U_max = scale_U + scale_uv_size - 1;
     uint8_t *scale_V_max = scale_V + scale_uv_size - 1;
 
+    if (options_->verbose) {
+        std::cout << "I420Scale: " << num << std::endl;
+    }
+
     libyuv::I420Scale(
         crop_Y, crop_stride_,
         crop_U, crop_stride2_,
@@ -464,6 +468,10 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
         scale_width, scale_height,
         libyuv::kFilterBilinear
         );
+
+    if (options_->verbose) {
+        std::cout << "I420Scale done: " << num << std::endl;
+    }
 
     cinfo.image_width = scale_width;
     cinfo.image_height = scale_height;
@@ -484,6 +492,9 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
     JSAMPROW u_rows[8];
     JSAMPROW v_rows[8];
 
+    if (options_->verbose) {
+        std::cout << "Looping: " << num << std::endl;
+    }
 
     for (uint8_t *Y_row = scale_Y, *U_row = scale_U, *V_row = scale_V; cinfo.next_scanline < scale_height;)
     {
@@ -498,8 +509,13 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
         jpeg_write_raw_data(&cinfo, rows, 16);
     }
 
+    if (options_->verbose) {
+        std::cout << "Looping done: " << num << std::endl;
+    }
+
     jpeg_finish_compress(&cinfo);
     buffer_len = jpeg_mem_len;
+    free(scaleBuffer);
 }
 
 
@@ -586,5 +602,6 @@ void MjpegEncoder::encodeThread(int num) {
 
 
         free(output_item.mem);
+        free(output_item.preview_mem);
     }
 }
