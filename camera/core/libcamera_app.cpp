@@ -5,9 +5,9 @@
  * libcamera_app.cpp - base class for libcamera apps.
  */
 
-#include "core/frame_info.hpp"
-#include "core/libcamera_app.hpp"
-#include "core/options.hpp"
+#include "./frame_info.hpp"
+#include "./libcamera_app.hpp"
+#include "./options.hpp"
 
 LibcameraApp::LibcameraApp(std::unique_ptr<Options> opts)
 	: options_(std::move(opts)), controls_(controls::controls),

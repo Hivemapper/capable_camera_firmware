@@ -166,7 +166,7 @@ void exif_set_string(ExifEntry *entry, char const *s) {
 
 MjpegEncoder::MjpegEncoder(VideoOptions const *options)
         : Encoder(options), abort_(false), index_(0) {
-//    output_thread_ = std::thread(&MjpegEncoder::outputThread, this);
+    output_thread_ = std::thread(&MjpegEncoder::outputThread, this);
     for (int ii = 0; ii < NUM_ENC_THREADS; ii += 1) {
         encode_thread_[ii] = std::thread(std::bind(&MjpegEncoder::encodeThread, this, ii));
     }
@@ -603,5 +603,26 @@ void MjpegEncoder::encodeThread(int num) {
 
         free(output_item.mem);
         free(output_item.preview_mem);
+
+//        stat_mutex_.lock();
+//        std::cout << "stat_mutex_ lock in ++"  << std::endl;
+        frame_second_ += 1;
+//        stat_mutex_.unlock();
+//        std::cout << "stat_mutex_ unlock in ++"  << std::endl;
+    }
+}
+
+
+void MjpegEncoder::outputThread() {
+    while (true) {
+        {
+//            stat_mutex_.lock();
+//            std::cout << "stat_mutex_ lock in output"  << std::endl;
+            std::this_thread::sleep_for (std::chrono::seconds(1));
+            std::cout << "Frame / sec: " << frame_second_  << std::endl;
+            frame_second_ = 0;
+//            stat_mutex_.unlock();
+//            std::cout << "stat_mutex_ unlock in output"  << std::endl;
+        }
     }
 }

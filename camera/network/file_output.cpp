@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: BSD-2-Clause */
+ /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2022, Chris Niessl, Hellbender Inc.
  *

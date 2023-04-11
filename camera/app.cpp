@@ -78,13 +78,14 @@ static void execute_stream(LibcameraEncoder &app, VideoOptions *options)
   auto last_entry_time = std::chrono::high_resolution_clock::now();
   auto start_time      = last_entry_time;
   auto after_msg_time  = last_entry_time;
+  auto real_wait  = last_entry_time;
   auto after_enc_time  = last_entry_time;
 
   for (unsigned int count = 0; !end_early; count++)
   {
     start_time = std::chrono::high_resolution_clock::now();
     LibcameraEncoder::Msg msg = app.Wait();
-
+    real_wait = std::chrono::high_resolution_clock::now();
     if (msg.type == LibcameraEncoder::MsgType::Quit)
     {
       end_early = true;
@@ -107,15 +108,16 @@ static void execute_stream(LibcameraEncoder &app, VideoOptions *options)
 
     after_enc_time = std::chrono::high_resolution_clock::now();
 
-//    if (options->verbose)
-//    {
-//      std::chrono::duration<double> diff1 = after_msg_time - start_time;
-//      std::chrono::duration<double> diff2 = after_enc_time - after_msg_time;
-//      std::cout << "Frame # " << std::setw(6) << count << std::endl;
-//      std::cout << "Wait Time: " << diff1.count() << std::endl;
-//      std::cout << "Encode Time: " << diff2.count() << std::endl;
-//
-//    }
+    if (options->verbose)
+    {
+      std::chrono::duration<double> diff1 = after_msg_time - start_time;
+      std::chrono::duration<double> diff2 = after_enc_time - after_msg_time;
+      std::chrono::duration<double> diff3 = real_wait -  start_time;
+      std::cout << "Frame # " << std::setw(6) << count << std::endl;
+      std::cout << "Wait Time: " << diff3.count() << " / / " << diff1.count() << std::endl;
+      std::cout << "Encode Time: " << diff2.count() << std::endl;
+
+    }
     last_entry_time = start_time;
   }
   
