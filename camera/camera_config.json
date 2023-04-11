@@ -3,11 +3,10 @@
     "directory": {
       "prefix": "",
       "output": "/mnt/data/pic/",
-      "output2": "/media/usb0/recording/",
       "maxusedspace": 21474836480,
       "minfreespace": 64000000,
       "minfreespace2": 32000000,
-      "downsampleStreamDir": ""
+      "downsampleStreamDir": "/mnt/data/pic_lg/"
     }
   },
   "camera": {
@@ -16,10 +15,12 @@
       "width": 4056,
       "height": 3040,
       "codec": "mjpeg",
-      "quality": 75,
+      "quality": 50,
+      "scale_width": 2048,
+      "scale_height": 1080,
       "crop_width": 3840,
       "crop_height": 1728,
-      "crop_offset_from_top": 432
+      "crop_offset_from_top": 0
     },
     "adjustment": {
       "hflip": false,
@@ -27,5 +28,5 @@
       "rotation": 180
     }
   },
-  "version": "cb.0.0.1"
+  "version": "0.0.2"
 }
