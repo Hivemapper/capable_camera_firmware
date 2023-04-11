@@ -48,7 +48,6 @@ add_subdirectory(encoder)
 add_subdirectory(network)
 add_subdirectory(post_processing_stages)
 
-
 project(libcamera-bridge)
 add_executable(libcamera-bridge app.cpp)
 target_link_libraries(libcamera-bridge libcamera_app encoders network)

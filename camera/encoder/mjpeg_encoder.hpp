@@ -87,6 +87,12 @@ private:
                     uint8_t *&encoded_buffer,
                     size_t &buffer_len,
                     int num);
+
+    void encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
+                                            EncodeItem &source,
+                                            uint8_t *&encoded_buffer,
+                                            size_t &buffer_len,
+                                            int num);
     void CreateExifData(libcamera::ControlList metadata,
                         uint8_t *&exif_buffer,
                         unsigned int &exif_len);

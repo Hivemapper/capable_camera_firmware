@@ -27,7 +27,7 @@ FileOutput::FileOutput(VideoOptions const *options) : Output(options)
 
   directory_[0] = options_->output;
   directory_[1] = options_->output_2nd;
-  directory_[2] = previewDir_;
+  directory_[2] = options_->downsampleStreamDir;
 
   minFreeSizes[0] = options_->minfreespace;
   minFreeSizes[1] = options_->minfreespace_2nd;
@@ -121,9 +121,13 @@ void FileOutput::outputBuffer(void *mem,
       wrapAndWrite(mem, size, &tv, 1);
     }
   }
-  if(previewDir_ != "")
+  if(options_->downsampleStreamDir != "")
   {
-    previewWrapAndWrite(prevMem, prevSize, &tv, frameNumTrun);
+      if (options_->verbose) {
+          std::cout << "downsampleStreamDir: " << options_->downsampleStreamDir << sizeof(prevMem) << " | " << prevSize << std::endl;
+      }
+
+      previewWrapAndWrite(prevMem, prevSize, &tv, frameNumTrun);
   }
 
   frameNumTrun = (frameNumTrun + 1) % 1000;
@@ -220,7 +224,7 @@ void FileOutput::wrapAndWrite(void *mem, size_t size, struct timeval *timestamp,
 void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *timestamp, int64_t frameNum)
 {
   std::stringstream fileNameGenerator;
-  fileNameGenerator << previewDir_;
+  fileNameGenerator << options_->downsampleStreamDir;
   fileNameGenerator << prefix_;
   fileNameGenerator << std::setw(10) << std::setfill('0') << timestamp->tv_sec;
   fileNameGenerator << "_";
@@ -240,11 +244,20 @@ void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *tim
       {
         if(writeTempFile_)
         {
+            if (options_->verbose) {
+                std::cout << "calling writeFile: " << tempFileName <<" to: " << fullFileName << std::endl;
+            }
           writeFile(tempFileName, mem, size);
-          boost::filesystem::rename(tempFileName, fullFileName);
+            if (options_->verbose) {
+                std::cout << "Renaming: " << tempFileName <<" to: " << fullFileName << std::endl;
+            }
+            boost::filesystem::rename(tempFileName, fullFileName);
         }
         else
         {
+            if (options_->verbose) {
+                std::cout << "calling writeFile2: " << tempFileName <<" to: " << fullFileName << std::endl;
+            }
           writeFile(fullFileName, mem, size);
         }
       }
@@ -259,6 +272,10 @@ void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *tim
 
 void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
 {
+    if (verbose_)
+    {
+        std::cout  << "writing:" << fullFileName << " mem:" << sizeof(mem) << " size: " << size << std::endl;
+    }
   //open file name and assign fd
   int fd, ret;
   fd = open(fullFileName.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
@@ -266,9 +283,4 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
     throw std::runtime_error("failed to write data");
   }
   close(fd);
-//  if (verbose_)
-//  {
-//    std::cerr << "writing " << ret << " bytes to ";
-//    std::cerr << fullFileName << std::endl;
-//  }
 }

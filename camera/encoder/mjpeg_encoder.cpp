@@ -9,11 +9,14 @@
 #include <iostream>
 
 #include <jpeglib.h>
+#include <turbojpeg.h>
 #include <libyuv.h>
 #include <libexif/exif-data.h>
 #include <map>
 #include <cstring>
 #include "mjpeg_encoder.hpp"
+#include <fcntl.h>
+
 
 //#include <Magick++.h>
 
@@ -357,8 +360,8 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
     uint8_t *U_max = out_U + crop_uv_size_ - 1;
     uint8_t *V_max = out_V + crop_uv_size_ - 1;
 
-
-    unsigned int skip_lines_offset = (options_->crop_offset_from_top) * src_stride;
+    unsigned int lineToSkip = (src_height - crop_height_) / 2;
+    unsigned int skip_lines_offset = lineToSkip * src_stride;
 //    unsigned int skip_lines_offset = 0;
     unsigned int skip_lines_offset_UV = skip_lines_offset /4;
     unsigned int crop_y_src_offset = (src_width - crop_width_) / 2;
@@ -417,13 +420,100 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
 //    free(crop_i420_c);
 }
 
+void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
+                                        EncodeItem &source,
+                                        uint8_t *&encoded_buffer,
+                                        size_t &buffer_len,
+                                        int num)
+{
+
+    (void)num;
+
+    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
+    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
+    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
+
+    unsigned int scale_width = options_->scale_width;
+    unsigned int scale_height = options_->scale_height;
+
+    unsigned int scale_y_stride =  scale_width;
+    unsigned int scale_uv_stride =  scale_width/2;
+
+    unsigned int scale_y_size = scale_y_stride * scale_height;
+    unsigned int scale_uv_size = scale_uv_stride * scale_height;
+    unsigned int scale_size = crop_y_size_ + (crop_uv_size_ * 2);
+
+    uint8_t*  scaleBuffer = (uint8_t*)malloc(scale_size);
+
+    uint8_t *scale_Y = (uint8_t *)scaleBuffer;
+    uint8_t *scale_U = (uint8_t *)scale_Y + scale_y_size;
+    uint8_t *scale_V = (uint8_t *)scale_U + scale_uv_size;
+
+    uint8_t *scale_Y_max = scale_Y + scale_y_size - 1;
+    uint8_t *scale_U_max = scale_U + scale_uv_size - 1;
+    uint8_t *scale_V_max = scale_V + scale_uv_size - 1;
+
+    libyuv::I420Scale(
+        crop_Y, crop_stride_,
+        crop_U, crop_stride2_,
+        crop_V, crop_stride2_,
+        crop_width_, crop_height_,
+        scale_Y, scale_y_stride,
+        scale_U, scale_uv_stride,
+        scale_V, scale_uv_stride,
+        scale_width, scale_height,
+        libyuv::kFilterBilinear
+        );
+
+    cinfo.image_width = scale_width;
+    cinfo.image_height = scale_height;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_YCbCr;
+    cinfo.restart_interval = 0;
+
+    jpeg_set_defaults(&cinfo);
+    cinfo.raw_data_in = TRUE;
+    jpeg_set_quality(&cinfo, 80, TRUE);
+    encoded_buffer = nullptr;
+    buffer_len = 0;
+    jpeg_mem_len_t jpeg_mem_len;
+    jpeg_mem_dest(&cinfo, &encoded_buffer, &jpeg_mem_len);
+    jpeg_start_compress(&cinfo, TRUE);
+
+    JSAMPROW y_rows[16];
+    JSAMPROW u_rows[8];
+    JSAMPROW v_rows[8];
+
+
+    for (uint8_t *Y_row = scale_Y, *U_row = scale_U, *V_row = scale_V; cinfo.next_scanline < scale_height;)
+    {
+        for (int i = 0; i < 16; i++, Y_row += scale_y_stride)
+            y_rows[i] = std::min(Y_row, scale_Y_max);
+        for (int i = 0; i < 8; i++, U_row += scale_uv_stride, V_row += scale_uv_stride){
+            u_rows[i] = std::min(U_row, scale_U_max);
+            v_rows[i] = std::min(V_row, scale_V_max);
+        }
+
+        JSAMPARRAY rows[] = { y_rows, u_rows, v_rows };
+        jpeg_write_raw_data(&cinfo, rows, 16);
+    }
+
+    jpeg_finish_compress(&cinfo);
+    buffer_len = jpeg_mem_len;
+}
+
 
 void MjpegEncoder::encodeThread(int num) {
     struct jpeg_compress_struct cinfoMain;
+    struct jpeg_compress_struct cinfoPrev;
+
     struct jpeg_error_mgr jerr;
 
     cinfoMain.err = jpeg_std_error(&jerr);
+    cinfoPrev.err = jpeg_std_error(&jerr);
+
     jpeg_create_compress(&cinfoMain);
+    jpeg_create_compress(&cinfoPrev);
     typedef std::chrono::duration<float, std::milli> duration;
 
     duration encode_time(0);
@@ -465,6 +555,7 @@ void MjpegEncoder::encodeThread(int num) {
         {
             auto start_time = std::chrono::high_resolution_clock::now();
             encodeJPEG(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
+            encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
             encode_time = (std::chrono::high_resolution_clock::now() - start_time);
 
         }
@@ -495,24 +586,5 @@ void MjpegEncoder::encodeThread(int num) {
 
 
         free(output_item.mem);
-//        free(output_item.preview_mem);
-//        stat_mutex_.lock();
-//        std::cout << "stat_mutex_ lock in ++"  << std::endl;
-//        frame_second_ += 1;
-//        stat_mutex_.unlock();
-//        std::cout << "stat_mutex_ unlock in ++"  << std::endl;
     }
 }
-//void MjpegEncoder::outputThread() {
-//    while (true) {
-//        {
-//            stat_mutex_.lock();
-//            std::cout << "stat_mutex_ lock in output"  << std::endl;
-//            std::this_thread::sleep_for (std::chrono::seconds(1));
-//            std::cout << "Frame / sec: " << frame_second_  << std::endl;
-//            frame_second_ = 0;
-//            stat_mutex_.unlock();
-//            std::cout << "stat_mutex_ unlock in output"  << std::endl;
-//        }
-//    }
-//}
