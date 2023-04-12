@@ -16,12 +16,12 @@
       "height": 3040,
       "codec": "mjpeg",
       "quality": 50,
-      "scale_quality": 90,
-      "scale_width": 2048,
-      "scale_height": 1080,
-      "crop_width": 3840,
-      "crop_height": 1728,
-      "crop_offset_from_top": 0
+      "scale_quality":75,
+      "scale_width": 2028,
+      "scale_height": 1024,
+      "crop_width": 4056,
+      "crop_height": 2048,
+      "crop_offset_from_top":0
     },
     "adjustment": {
       "hflip": false,
@@ -29,5 +29,5 @@
       "rotation": 180
     }
   },
-  "version": "0.0.2"
+  "version": "0.0.3"
 }
