@@ -123,10 +123,6 @@ void FileOutput::outputBuffer(void *mem,
   }
   if(options_->downsampleStreamDir != "")
   {
-      if (options_->verbose) {
-          std::cout << "downsampleStreamDir: " << options_->downsampleStreamDir << sizeof(prevMem) << " | " << prevSize << std::endl;
-      }
-
       previewWrapAndWrite(prevMem, prevSize, &tv, frameNumTrun);
   }
 
@@ -244,13 +240,7 @@ void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *tim
       {
         if(writeTempFile_)
         {
-            if (options_->verbose) {
-                std::cout << "calling writeFile: " << tempFileName <<" to: " << fullFileName << std::endl;
-            }
           writeFile(tempFileName, mem, size);
-            if (options_->verbose) {
-                std::cout << "Renaming: " << tempFileName <<" to: " << fullFileName << std::endl;
-            }
             boost::filesystem::rename(tempFileName, fullFileName);
         }
         else
@@ -272,10 +262,6 @@ void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *tim
 
 void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
 {
-    if (verbose_)
-    {
-        std::cout  << "writing:" << fullFileName << " mem:" << sizeof(mem) << " size: " << size << std::endl;
-    }
   //open file name and assign fd
   int fd, ret;
   fd = open(fullFileName.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);

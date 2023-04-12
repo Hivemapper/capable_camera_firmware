@@ -166,7 +166,10 @@ void exif_set_string(ExifEntry *entry, char const *s) {
 
 MjpegEncoder::MjpegEncoder(VideoOptions const *options)
         : Encoder(options), abort_(false), index_(0) {
-    output_thread_ = std::thread(&MjpegEncoder::outputThread, this);
+    if (options_->verbose) {
+        output_thread_ = std::thread(&MjpegEncoder::outputThread, this);
+    }
+
     for (int ii = 0; ii < NUM_ENC_THREADS; ii += 1) {
         encode_thread_[ii] = std::thread(std::bind(&MjpegEncoder::encodeThread, this, ii));
     }
@@ -360,15 +363,35 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
     uint8_t *U_max = out_U + crop_uv_size_ - 1;
     uint8_t *V_max = out_V + crop_uv_size_ - 1;
 
+
+//    As shown in the above image, the Y′, U and V components in Y′UV420 are encoded separately in sequential blocks.
+//    A Y′ value is stored for every pixel, followed by a U value for each 2×2 square block of pixels,
+//    and finally a V value for each 2×2 block.
+//    Corresponding Y′, U and V values are shown using the same color in the diagram above.
+//    Read line-by-line as a byte stream from a device,
+//    the Y′ block would be found at position 0,
+//    the U block at position x×y (6×4 = 24 in this example)
+//    and the V block at position x×y + (x×y)/4 (here, 6×4 + (6×4)/4 = 30).
+
     unsigned int lineToSkip = (src_height - crop_height_) / 2;
     unsigned int skip_lines_offset = lineToSkip * src_stride;
-//    unsigned int skip_lines_offset = 0;
     unsigned int skip_lines_offset_UV = skip_lines_offset /4;
     unsigned int crop_y_src_offset = (src_width - crop_width_) / 2;
     unsigned int crop_uv_src_offset = crop_y_src_offset / 2;
 
 //    if (options_->verbose) {
-//        std::cout << "I420Rotate: " << num <<" : " << sizeof(cropBuffer_[num]) << std::endl;
+//        std::cout << "I420Rotate:"
+//        << "\nsrc_width = " << src_width
+//        << "\nsrc_stride = " << src_stride
+//        << "\nsrc_y_size = " << src_y_size
+//        << "\nsrc_uv_size = " << src_uv_size
+//
+//        << "\nlineToSkip = " << lineToSkip
+//        << "\nskip_lines_offset = " << skip_lines_offset
+//        << "\nskip_lines_offset_UV = " << skip_lines_offset_UV
+//        << "\ncrop_y_src_offset =  " << crop_y_src_offset
+//        << "\ncrop_uv_src_offset = " << crop_uv_src_offset
+//        << std::endl;
 //    }
 
     libyuv::I420Rotate(
@@ -379,10 +402,6 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
             crop_U, crop_U_stride,
             crop_V, crop_V_stride,
             crop_width_, crop_height_, libyuv::kRotate0);
-
-//    if (options_->verbose) {
-//        std::cout << "I420Rotate done! " << std::endl;
-//    }
 
     cinfo.image_width = crop_width_;
     cinfo.image_height = crop_height_;
@@ -420,6 +439,7 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
 //    free(crop_i420_c);
 }
 
+
 void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
                                         EncodeItem &source,
                                         uint8_t *&encoded_buffer,
@@ -453,10 +473,6 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
     uint8_t *scale_U_max = scale_U + scale_uv_size - 1;
     uint8_t *scale_V_max = scale_V + scale_uv_size - 1;
 
-    if (options_->verbose) {
-        std::cout << "I420Scale: " << num << std::endl;
-    }
-
     libyuv::I420Scale(
         crop_Y, crop_stride_,
         crop_U, crop_stride2_,
@@ -468,10 +484,6 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
         scale_width, scale_height,
         libyuv::kFilterBilinear
         );
-
-    if (options_->verbose) {
-        std::cout << "I420Scale done: " << num << std::endl;
-    }
 
     cinfo.image_width = scale_width;
     cinfo.image_height = scale_height;
@@ -492,10 +504,6 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
     JSAMPROW u_rows[8];
     JSAMPROW v_rows[8];
 
-    if (options_->verbose) {
-        std::cout << "Looping: " << num << std::endl;
-    }
-
     for (uint8_t *Y_row = scale_Y, *U_row = scale_U, *V_row = scale_V; cinfo.next_scanline < scale_height;)
     {
         for (int i = 0; i < 16; i++, Y_row += scale_y_stride)
@@ -507,10 +515,6 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
 
         JSAMPARRAY rows[] = { y_rows, u_rows, v_rows };
         jpeg_write_raw_data(&cinfo, rows, 16);
-    }
-
-    if (options_->verbose) {
-        std::cout << "Looping done: " << num << std::endl;
     }
 
     jpeg_finish_compress(&cinfo);
@@ -606,7 +610,9 @@ void MjpegEncoder::encodeThread(int num) {
 
 //        stat_mutex_.lock();
 //        std::cout << "stat_mutex_ lock in ++"  << std::endl;
-        frame_second_ += 1;
+        if (options_->verbose) {
+            frame_second_ += 1;
+        }
 //        stat_mutex_.unlock();
 //        std::cout << "stat_mutex_ unlock in ++"  << std::endl;
     }
@@ -614,15 +620,13 @@ void MjpegEncoder::encodeThread(int num) {
 
 
 void MjpegEncoder::outputThread() {
-    while (true) {
-        {
-//            stat_mutex_.lock();
-//            std::cout << "stat_mutex_ lock in output"  << std::endl;
-            std::this_thread::sleep_for (std::chrono::seconds(1));
-            std::cout << "Frame / sec: " << frame_second_  << std::endl;
-            frame_second_ = 0;
-//            stat_mutex_.unlock();
-//            std::cout << "stat_mutex_ unlock in output"  << std::endl;
+    if (options_->verbose) {
+        while (true) {
+            {
+                std::this_thread::sleep_for (std::chrono::seconds(1));
+                std::cout << "Frame / sec: " << frame_second_  << std::endl;
+                frame_second_ = 0;
+            }
         }
     }
 }
