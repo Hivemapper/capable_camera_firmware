@@ -316,9 +316,9 @@ void MjpegEncoder::createBuffer(struct jpeg_compress_struct &cinfo, EncodeItem &
     unsigned int src_stride = item.stride;
 
     if (options_->verbose) {
-        std::cout << "encodeJPEG source: " <<
-        "\n width:" << item.width <<
-        "\n height:" << item.height <<
+        std::cout << "create buffer source: " <<
+        " width:" << item.width <<
+        " height:" << item.height <<
         std::endl;
     }
 
