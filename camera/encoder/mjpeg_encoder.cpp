@@ -461,12 +461,12 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
     unsigned int src_height = item.height;
     unsigned int src_stride = item.stride;
 
-    if (options_->verbose) {
-        std::cout << "encodeJPEG source: " <<
-                  "\n width:" << item.width <<
-                  "\n height:" << item.height <<
-                  std::endl;
-    }
+//    if (options_->verbose) {
+//        std::cout << "encodeJPEG source: " <<
+//                  "\n width:" << item.width <<
+//                  "\n height:" << item.height <<
+//                  std::endl;
+//    }
 
     unsigned int src_half_height = (src_height + 1) / 2;
     unsigned int src_stride2 = item.stride / 2;
