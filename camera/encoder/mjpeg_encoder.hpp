@@ -82,6 +82,8 @@ private:
 
     void initDownSampleInfo(EncodeItem &source);
 
+    void createBuffer(struct jpeg_compress_struct &cinfo, EncodeItem &item, uint8_t *&encoded_buffer,
+                                    size_t &buffer_len, int num);
 	void encodeJPEG(struct jpeg_compress_struct &cinfo,
                     EncodeItem &item,
                     uint8_t *&encoded_buffer,

@@ -51,6 +51,10 @@ struct VideoOptions : public Options
             "crop height")
             ("crop_offset_from_top,d", value<int>(&crop_offset_from_top)->default_value(50),
             "crop offset from top")
+			("skip_4k", value<bool>(&skip_4k)->default_value(false)->implicit_value(true),
+			 "skip 4k encoding")
+                ("skip_2k", value<bool>(&skip_2k)->default_value(false)->implicit_value(true),
+                 "skip 2k encoding")
 			("listen,l", value<bool>(&listen)->default_value(false)->implicit_value(true),
 			 "Listen for an incoming client network connection before sending data to the client")
 			("keypress,k", value<bool>(&keypress)->default_value(false)->implicit_value(true),
@@ -82,6 +86,8 @@ struct VideoOptions : public Options
     int crop_width;
     int crop_height;
     int crop_offset_from_top;
+	bool skip_4k;
+	bool skip_2k;
 	bool listen;
 	bool keypress;
 	bool signal;
