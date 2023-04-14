@@ -607,6 +607,7 @@ void MjpegEncoder::encodeThread(int num) {
 
         free(output_item.mem);
         free(output_item.preview_mem);
+        free(output_item.encoded_buffer);
 
 //        stat_mutex_.lock();
 //        std::cout << "stat_mutex_ lock in ++"  << std::endl;
