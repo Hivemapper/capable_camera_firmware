@@ -152,7 +152,7 @@ struct Options
   bool rawfull;
   libcamera::Transform transform;
   std::string roi;
-  float roi_x, roi_y, roi_width, roi_height;
+  int roi_x, roi_y, roi_width, roi_height;
   int shutter;
   float gain;
   std::string metering;

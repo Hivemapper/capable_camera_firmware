@@ -299,6 +299,152 @@ void MjpegEncoder::CreateExifData(libcamera::ControlList metadata,
     }
 }
 
+//void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &item, uint8_t *&encoded_buffer,
+//                              size_t &buffer_len, int num)
+//{
+//    (void)num;
+//
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    // SRC
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    uint8_t *src_i420 = (uint8_t *)item.mem;
+//
+//    unsigned int src_width = item.width;
+//    unsigned int src_height = item.height;
+//    unsigned int src_stride = item.stride;
+//
+//    if (options_->verbose) {
+//        std::cout << "encodeJPEG source: " <<
+//        "\n width:" << item.width <<
+//        "\n height:" << item.height <<
+//        std::endl;
+//    }
+//
+//    unsigned int src_half_height = (src_height + 1) / 2;
+//    unsigned int src_stride2 = item.stride / 2;
+//
+//    unsigned int src_y_size = src_stride * src_height;
+//    unsigned int src_uv_size = src_stride2 * src_half_height ;
+//
+//    int src_U_stride = src_stride2;
+//    int src_V_stride = src_stride2;
+//
+//    uint8_t *src_Y = (uint8_t *)src_i420;
+//    uint8_t *src_U = (uint8_t *)src_Y + src_y_size;
+//    uint8_t *src_V = (uint8_t *)src_U + src_uv_size;
+//
+//
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    // CROP
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    //720 x 1280 — HD is 720p
+//    //1920 x 1080 — FHD is 1080p
+//    //2560 x 1440 — QHD (Quad HD) is 2K 1440p
+//    //3840 x 2160 — UHD (Ultra HD) is 4K 2160p
+//    //4056 x 3040 - Cam Raw
+//
+//    int crop_U_stride = crop_stride2_;
+//    int crop_V_stride = crop_stride2_;
+//
+//    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
+//    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
+//    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
+//
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    // OUT
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    uint8_t *out_Y = (uint8_t *)cropBuffer_[num];
+//    unsigned int out_stride = crop_stride_;
+//    int out_half_stride = crop_stride2_;
+//
+//    uint8_t *out_U = (uint8_t *)out_Y + crop_y_size_;
+//    uint8_t *out_V = (uint8_t *)out_U + crop_uv_size_;
+//
+//    uint8_t *Y_max = out_Y + crop_y_size_ - 1;
+//    uint8_t *U_max = out_U + crop_uv_size_ - 1;
+//    uint8_t *V_max = out_V + crop_uv_size_ - 1;
+//
+//
+////    As shown in the above image, the Y′, U and V components in Y′UV420 are encoded separately in sequential blocks.
+////    A Y′ value is stored for every pixel, followed by a U value for each 2×2 square block of pixels,
+////    and finally a V value for each 2×2 block.
+////    Corresponding Y′, U and V values are shown using the same color in the diagram above.
+////    Read line-by-line as a byte stream from a device,
+////    the Y′ block would be found at position 0,
+////    the U block at position x×y (6×4 = 24 in this example)
+////    and the V block at position x×y + (x×y)/4 (here, 6×4 + (6×4)/4 = 30).
+//
+//    unsigned int lineToSkip = (src_height - crop_height_) / 2;
+//    unsigned int skip_lines_offset = lineToSkip * src_stride;
+//    unsigned int skip_lines_offset_UV = skip_lines_offset /4;
+//    unsigned int crop_y_src_offset = (src_width - crop_width_) / 2;
+//    unsigned int crop_uv_src_offset = crop_y_src_offset / 2;
+//
+////    if (options_->verbose) {
+////        std::cout << "I420Rotate:"
+////        << "\nsrc_width = " << src_width
+////        << "\nsrc_stride = " << src_stride
+////        << "\nsrc_y_size = " << src_y_size
+////        << "\nsrc_uv_size = " << src_uv_size
+////
+////        << "\nlineToSkip = " << lineToSkip
+////        << "\nskip_lines_offset = " << skip_lines_offset
+////        << "\nskip_lines_offset_UV = " << skip_lines_offset_UV
+////        << "\ncrop_y_src_offset =  " << crop_y_src_offset
+////        << "\ncrop_uv_src_offset = " << crop_uv_src_offset
+////        << std::endl;
+////    }
+//
+//    libyuv::I420Rotate(
+//            src_i420 + skip_lines_offset + crop_y_src_offset, src_stride,
+//            src_U + skip_lines_offset_UV + crop_uv_src_offset, src_U_stride,
+//            src_V + skip_lines_offset_UV + crop_uv_src_offset, src_V_stride,
+//            cropBuffer_[num], crop_stride_,
+//            crop_U, crop_U_stride,
+//            crop_V, crop_V_stride,
+//            crop_width_, crop_height_, libyuv::kRotate0);
+//
+//    cinfo.image_width = crop_width_;
+//    cinfo.image_height = crop_height_;
+//    cinfo.input_components = 3;
+//    cinfo.in_color_space = JCS_YCbCr;
+//    cinfo.restart_interval = 0;
+//
+//    jpeg_set_defaults(&cinfo);
+//    cinfo.raw_data_in = TRUE;
+//    jpeg_set_quality(&cinfo, options_->quality, TRUE);
+//    encoded_buffer = nullptr;
+//    buffer_len = 0;
+//    jpeg_mem_len_t jpeg_mem_len;
+//    jpeg_mem_dest(&cinfo, &encoded_buffer, &jpeg_mem_len);
+//    jpeg_start_compress(&cinfo, TRUE);
+//
+//    JSAMPROW y_rows[16];
+//    JSAMPROW u_rows[8];
+//    JSAMPROW v_rows[8];
+//
+//
+//    for (uint8_t *Y_row = out_Y, *U_row = out_U, *V_row = out_V; cinfo.next_scanline < crop_height_;)
+//    {
+//        for (int i = 0; i < 16; i++, Y_row += out_stride)
+//            y_rows[i] = std::min(Y_row, Y_max);
+//        for (int i = 0; i < 8; i++, U_row += out_half_stride, V_row += out_half_stride)
+//            u_rows[i] = std::min(U_row, U_max), v_rows[i] = std::min(V_row, V_max);
+//
+//        JSAMPARRAY rows[] = { y_rows, u_rows, v_rows };
+//        jpeg_write_raw_data(&cinfo, rows, 16);
+//    }
+//
+//    jpeg_finish_compress(&cinfo);
+//    buffer_len = jpeg_mem_len;
+////    free(crop_i420_c);
+//}
 void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &item, uint8_t *&encoded_buffer,
                               size_t &buffer_len, int num)
 {
@@ -315,53 +461,60 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
     unsigned int src_height = item.height;
     unsigned int src_stride = item.stride;
 
+    if (options_->verbose) {
+        std::cout << "encodeJPEG source: " <<
+                  "\n width:" << item.width <<
+                  "\n height:" << item.height <<
+                  std::endl;
+    }
+
     unsigned int src_half_height = (src_height + 1) / 2;
     unsigned int src_stride2 = item.stride / 2;
 
     unsigned int src_y_size = src_stride * src_height;
     unsigned int src_uv_size = src_stride2 * src_half_height ;
 
-    int src_U_stride = src_stride2;
-    int src_V_stride = src_stride2;
+//    int src_U_stride = src_stride2;
+//    int src_V_stride = src_stride2;
 
-    uint8_t *src_Y = (uint8_t *)src_i420;
-    uint8_t *src_U = (uint8_t *)src_Y + src_y_size;
-    uint8_t *src_V = (uint8_t *)src_U + src_uv_size;
+//    uint8_t *src_Y = (uint8_t *)src_i420;
+//    uint8_t *src_U = (uint8_t *)src_Y + src_y_size;
+//    uint8_t *src_V = (uint8_t *)src_U + src_uv_size;
 
 
-    //----------------------------------------------
-    //----------------------------------------------
-    // CROP
-    //----------------------------------------------
-    //----------------------------------------------
-    //720 x 1280 — HD is 720p
-    //1920 x 1080 — FHD is 1080p
-    //2560 x 1440 — QHD (Quad HD) is 2K 1440p
-    //3840 x 2160 — UHD (Ultra HD) is 4K 2160p
-    //4056 x 3040 - Cam Raw
-
-    int crop_U_stride = crop_stride2_;
-    int crop_V_stride = crop_stride2_;
-
-    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
-    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
-    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    // CROP
+//    //----------------------------------------------
+//    //----------------------------------------------
+//    //720 x 1280 — HD is 720p
+//    //1920 x 1080 — FHD is 1080p
+//    //2560 x 1440 — QHD (Quad HD) is 2K 1440p
+//    //3840 x 2160 — UHD (Ultra HD) is 4K 2160p
+//    //4056 x 3040 - Cam Raw
+//
+//    int crop_U_stride = crop_stride2_;
+//    int crop_V_stride = crop_stride2_;
+//
+//    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
+//    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
+//    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
 
     //----------------------------------------------
     //----------------------------------------------
     // OUT
     //----------------------------------------------
     //----------------------------------------------
-    uint8_t *out_Y = (uint8_t *)cropBuffer_[num];
-    unsigned int out_stride = crop_stride_;
-    int out_half_stride = crop_stride2_;
+    uint8_t *out_Y = (uint8_t *)src_i420;
+    unsigned int out_stride = src_stride;
+    int out_half_stride = src_stride2;
 
-    uint8_t *out_U = (uint8_t *)out_Y + crop_y_size_;
-    uint8_t *out_V = (uint8_t *)out_U + crop_uv_size_;
+    uint8_t *out_U = (uint8_t *)out_Y + src_y_size;
+    uint8_t *out_V = (uint8_t *)out_U + src_uv_size;
 
-    uint8_t *Y_max = out_Y + crop_y_size_ - 1;
-    uint8_t *U_max = out_U + crop_uv_size_ - 1;
-    uint8_t *V_max = out_V + crop_uv_size_ - 1;
+    uint8_t *Y_max = out_Y + src_y_size - 1;
+    uint8_t *U_max = out_U + src_uv_size - 1;
+    uint8_t *V_max = out_V + src_uv_size - 1;
 
 
 //    As shown in the above image, the Y′, U and V components in Y′UV420 are encoded separately in sequential blocks.
@@ -373,11 +526,11 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
 //    the U block at position x×y (6×4 = 24 in this example)
 //    and the V block at position x×y + (x×y)/4 (here, 6×4 + (6×4)/4 = 30).
 
-    unsigned int lineToSkip = (src_height - crop_height_) / 2;
-    unsigned int skip_lines_offset = lineToSkip * src_stride;
-    unsigned int skip_lines_offset_UV = skip_lines_offset /4;
-    unsigned int crop_y_src_offset = (src_width - crop_width_) / 2;
-    unsigned int crop_uv_src_offset = crop_y_src_offset / 2;
+//    unsigned int lineToSkip = (src_height - crop_height_) / 2;
+//    unsigned int skip_lines_offset = lineToSkip * src_stride;
+//    unsigned int skip_lines_offset_UV = skip_lines_offset /4;
+//    unsigned int crop_y_src_offset = (src_width - crop_width_) / 2;
+//    unsigned int crop_uv_src_offset = crop_y_src_offset / 2;
 
 //    if (options_->verbose) {
 //        std::cout << "I420Rotate:"
@@ -394,17 +547,17 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
 //        << std::endl;
 //    }
 
-    libyuv::I420Rotate(
-            src_i420 + skip_lines_offset + crop_y_src_offset, src_stride,
-            src_U + skip_lines_offset_UV + crop_uv_src_offset, src_U_stride,
-            src_V + skip_lines_offset_UV + crop_uv_src_offset, src_V_stride,
-            cropBuffer_[num], crop_stride_,
-            crop_U, crop_U_stride,
-            crop_V, crop_V_stride,
-            crop_width_, crop_height_, libyuv::kRotate0);
+//    libyuv::I420Rotate(
+//            src_i420 + skip_lines_offset + crop_y_src_offset, src_stride,
+//            src_U + skip_lines_offset_UV + crop_uv_src_offset, src_U_stride,
+//            src_V + skip_lines_offset_UV + crop_uv_src_offset, src_V_stride,
+//            cropBuffer_[num], crop_stride_,
+//            crop_U, crop_U_stride,
+//            crop_V, crop_V_stride,
+//            crop_width_, crop_height_, libyuv::kRotate0);
 
-    cinfo.image_width = crop_width_;
-    cinfo.image_height = crop_height_;
+    cinfo.image_width = src_width;
+    cinfo.image_height = src_height;
     cinfo.input_components = 3;
     cinfo.in_color_space = JCS_YCbCr;
     cinfo.restart_interval = 0;
@@ -423,7 +576,7 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
     JSAMPROW v_rows[8];
 
 
-    for (uint8_t *Y_row = out_Y, *U_row = out_U, *V_row = out_V; cinfo.next_scanline < crop_height_;)
+    for (uint8_t *Y_row = out_Y, *U_row = out_U, *V_row = out_V; cinfo.next_scanline < src_height;)
     {
         for (int i = 0; i < 16; i++, Y_row += out_stride)
             y_rows[i] = std::min(Y_row, Y_max);
@@ -575,7 +728,7 @@ void MjpegEncoder::encodeThread(int num) {
         {
             auto start_time = std::chrono::high_resolution_clock::now();
             encodeJPEG(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
-            encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
+//            encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
             encode_time = (std::chrono::high_resolution_clock::now() - start_time);
 
         }

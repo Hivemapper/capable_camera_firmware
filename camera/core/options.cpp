@@ -253,7 +253,7 @@ bool Options::Parse(int argc, char *argv[])
     if (!!(transform & Transform::Transpose))
       throw std::runtime_error("transforms requiring transpose not supported");
 
-    if (sscanf(roi.c_str(), "%f,%f,%f,%f", &roi_x, &roi_y, &roi_width, &roi_height) != 4)
+    if (sscanf(roi.c_str(), "%d,%d,%d,%d", &roi_x, &roi_y, &roi_width, &roi_height) != 4)
       roi_x = roi_y = roi_width = roi_height = 0; // don't set digital zoom
 
     std::map<std::string, int> metering_table =
