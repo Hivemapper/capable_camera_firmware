@@ -602,9 +602,22 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
 
     (void)num;
 
-    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
-    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
-    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
+    uint8_t *src_i420 = (uint8_t *)source.mem;
+
+    unsigned int src_width = source.width;
+    unsigned int src_height = source.height;
+    unsigned int src_stride = source.stride;
+
+    unsigned int src_half_height = (src_height + 1) / 2;
+    unsigned int src_stride2 = source.stride / 2;
+
+    unsigned int src_y_size = src_stride * src_height;
+    unsigned int src_uv_size = src_stride2 * src_half_height ;
+
+
+    uint8_t *src_Y = (uint8_t *)src_i420;
+    uint8_t *src_U = (uint8_t *)src_Y + src_y_size;
+    uint8_t *src_V = (uint8_t *)src_U + src_uv_size;
 
     unsigned int scale_width = options_->scale_width;
     unsigned int scale_height = options_->scale_height;
@@ -627,10 +640,10 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
     uint8_t *scale_V_max = scale_V + scale_uv_size - 1;
 
     libyuv::I420Scale(
-        crop_Y, crop_stride_,
-        crop_U, crop_stride2_,
-        crop_V, crop_stride2_,
-        crop_width_, crop_height_,
+        src_Y, src_stride,
+        src_U, src_stride2,
+        src_V, src_stride2,
+        src_width, src_height,
         scale_Y, scale_y_stride,
         scale_U, scale_uv_stride,
         scale_V, scale_uv_stride,
@@ -728,7 +741,7 @@ void MjpegEncoder::encodeThread(int num) {
         {
             auto start_time = std::chrono::high_resolution_clock::now();
             encodeJPEG(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
-//            encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
+            encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
             encode_time = (std::chrono::high_resolution_clock::now() - start_time);
 
         }
