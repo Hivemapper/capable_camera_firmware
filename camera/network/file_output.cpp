@@ -269,4 +269,5 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size)
     throw std::runtime_error("failed to write data");
   }
   close(fd);
+  fsync(fd);
 }
