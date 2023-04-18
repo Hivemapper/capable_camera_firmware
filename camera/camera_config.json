@@ -26,8 +26,9 @@
     "adjustment": {
       "hflip": false,
       "vflip": false,
-      "rotation": 180
+      "rotation": 180,
+      "roi": "0,496,4056,2048"
     }
   },
-  "version": "0.0.5"
+  "version": "0.0.6"
 }

@@ -120,7 +120,11 @@ void Options::json_manage_adj_cfg(nlohmann::json adjustment_cfg)
   if(adjustment_cfg.contains("vflip"))
   {
     vflip_ = adjustment_cfg.at("vflip");
-  }  
+  }
+    if(adjustment_cfg.contains("roi"))
+    {
+        roi = adjustment_cfg.at("roi");
+    }
 }
 
 void Options::json_manage_cb_cfg(nlohmann::json color_cfg)
