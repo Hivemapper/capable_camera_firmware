@@ -299,48 +299,46 @@ void MjpegEncoder::CreateExifData(libcamera::ControlList metadata,
     }
 }
 
-void MjpegEncoder::createBuffer(struct jpeg_compress_struct &cinfo, EncodeItem &item, uint8_t *&encoded_buffer,
-                              size_t &buffer_len, int num)
-{
-    (void)num;
+void MjpegEncoder::createBuffer(struct jpeg_compress_struct &cinfo, EncodeItem &item, int num) {
+    (void) num;
 
     //----------------------------------------------
     //----------------------------------------------
     // SRC
     //----------------------------------------------
     //----------------------------------------------
-    uint8_t *src_i420 = (uint8_t *)item.mem;
+    uint8_t *src_i420 = (uint8_t *) item.mem;
 
 //    unsigned int src_width = item.width;
     unsigned int src_height = item.height;
     unsigned int src_stride = item.stride;
 
-    if (options_->verbose) {
-        std::cout << "create buffer source: " <<
-        " width:" << item.width <<
-        " height:" << item.height <<
-        std::endl;
-    }
+//    if (options_->verbose) {
+//        std::cout << "create buffer source: " <<
+//                  " width:" << item.width <<
+//                  " height:" << item.height <<
+//                  std::endl;
+//    }
 
     unsigned int src_half_height = (src_height + 1) / 2;
     unsigned int src_stride2 = item.stride / 2;
 
     unsigned int src_y_size = src_stride * src_height;
-    unsigned int src_uv_size = src_stride2 * src_half_height ;
+    unsigned int src_uv_size = src_stride2 * src_half_height;
 
     int src_U_stride = src_stride2;
     int src_V_stride = src_stride2;
 
-    uint8_t *src_Y = (uint8_t *)src_i420;
-    uint8_t *src_U = (uint8_t *)src_Y + src_y_size;
-    uint8_t *src_V = (uint8_t *)src_U + src_uv_size;
+    uint8_t *src_Y = (uint8_t *) src_i420;
+    uint8_t *src_U = (uint8_t *) src_Y + src_y_size;
+    uint8_t *src_V = (uint8_t *) src_U + src_uv_size;
 
     int crop_U_stride = crop_stride2_;
     int crop_V_stride = crop_stride2_;
 
-    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
-    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
-    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
+    uint8_t *crop_Y = (uint8_t *) cropBuffer_[num];
+    uint8_t *crop_U = (uint8_t *) crop_Y + crop_y_size_;
+    uint8_t *crop_V = (uint8_t *) crop_U + crop_uv_size_;
 
     libyuv::I420Rotate(
             src_i420, src_stride,
@@ -353,22 +351,21 @@ void MjpegEncoder::createBuffer(struct jpeg_compress_struct &cinfo, EncodeItem &
 
 }
 
-void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &item, uint8_t *&encoded_buffer,
-                              size_t &buffer_len, int num)
-{
-    (void)num;
+void
+MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, uint8_t *&encoded_buffer, size_t &buffer_len, int num) {
+    (void) num;
 
     //----------------------------------------------
     //----------------------------------------------
     // OUT
     //----------------------------------------------
     //----------------------------------------------
-    uint8_t *out_Y = (uint8_t *)cropBuffer_[num];
+    uint8_t *out_Y = (uint8_t *) cropBuffer_[num];
     unsigned int out_stride = crop_stride_;
     int out_half_stride = crop_stride2_;
 
-    uint8_t *out_U = (uint8_t *)out_Y + crop_y_size_;
-    uint8_t *out_V = (uint8_t *)out_U + crop_uv_size_;
+    uint8_t *out_U = (uint8_t *) out_Y + crop_y_size_;
+    uint8_t *out_V = (uint8_t *) out_U + crop_uv_size_;
 
     uint8_t *Y_max = out_Y + crop_y_size_ - 1;
     uint8_t *U_max = out_U + crop_uv_size_ - 1;
@@ -394,14 +391,13 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
     JSAMPROW v_rows[8];
 
 
-    for (uint8_t *Y_row = out_Y, *U_row = out_U, *V_row = out_V; cinfo.next_scanline < crop_height_;)
-    {
+    for (uint8_t *Y_row = out_Y, *U_row = out_U, *V_row = out_V; cinfo.next_scanline < crop_height_;) {
         for (int i = 0; i < 16; i++, Y_row += out_stride)
             y_rows[i] = std::min(Y_row, Y_max);
         for (int i = 0; i < 8; i++, U_row += out_half_stride, V_row += out_half_stride)
             u_rows[i] = std::min(U_row, U_max), v_rows[i] = std::min(V_row, V_max);
 
-        JSAMPARRAY rows[] = { y_rows, u_rows, v_rows };
+        JSAMPARRAY rows[] = {y_rows, u_rows, v_rows};
         jpeg_write_raw_data(&cinfo, rows, 16);
     }
 
@@ -411,34 +407,30 @@ void MjpegEncoder::encodeJPEG(struct jpeg_compress_struct &cinfo, EncodeItem &it
 }
 
 
-void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
-                                        EncodeItem &source,
-                                        uint8_t *&encoded_buffer,
-                                        size_t &buffer_len,
-                                        int num)
-{
+void
+MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo, uint8_t *&encoded_buffer, size_t &buffer_len,
+                                   int num) {
+    (void) num;
 
-    (void)num;
-
-    uint8_t *crop_Y = (uint8_t *)cropBuffer_[num];
-    uint8_t *crop_U = (uint8_t *)crop_Y + crop_y_size_;
-    uint8_t *crop_V = (uint8_t *)crop_U + crop_uv_size_;
+    uint8_t *crop_Y = (uint8_t *) cropBuffer_[num];
+    uint8_t *crop_U = (uint8_t *) crop_Y + crop_y_size_;
+    uint8_t *crop_V = (uint8_t *) crop_U + crop_uv_size_;
 
     unsigned int scale_width = options_->scale_width;
     unsigned int scale_height = options_->scale_height;
 
-    unsigned int scale_y_stride =  scale_width;
-    unsigned int scale_uv_stride =  scale_width/2;
+    unsigned int scale_y_stride = scale_width;
+    unsigned int scale_uv_stride = scale_width / 2;
 
     unsigned int scale_y_size = scale_y_stride * scale_height;
     unsigned int scale_uv_size = scale_uv_stride * scale_height;
     unsigned int scale_size = crop_y_size_ + (crop_uv_size_ * 2);
 
-    uint8_t*  scaleBuffer = (uint8_t*)malloc(scale_size);
+    uint8_t *scaleBuffer = (uint8_t *) malloc(scale_size);
 
-    uint8_t *scale_Y = (uint8_t *)scaleBuffer;
-    uint8_t *scale_U = (uint8_t *)scale_Y + scale_y_size;
-    uint8_t *scale_V = (uint8_t *)scale_U + scale_uv_size;
+    uint8_t *scale_Y = (uint8_t *) scaleBuffer;
+    uint8_t *scale_U = (uint8_t *) scale_Y + scale_y_size;
+    uint8_t *scale_V = (uint8_t *) scale_U + scale_uv_size;
 
     uint8_t *scale_Y_max = scale_Y + scale_y_size - 1;
     uint8_t *scale_U_max = scale_U + scale_uv_size - 1;
@@ -475,16 +467,15 @@ void MjpegEncoder::encodeDownsampleJPEG(struct jpeg_compress_struct &cinfo,
     JSAMPROW u_rows[8];
     JSAMPROW v_rows[8];
 
-    for (uint8_t *Y_row = scale_Y, *U_row = scale_U, *V_row = scale_V; cinfo.next_scanline < scale_height;)
-    {
+    for (uint8_t *Y_row = scale_Y, *U_row = scale_U, *V_row = scale_V; cinfo.next_scanline < scale_height;) {
         for (int i = 0; i < 16; i++, Y_row += scale_y_stride)
             y_rows[i] = std::min(Y_row, scale_Y_max);
-        for (int i = 0; i < 8; i++, U_row += scale_uv_stride, V_row += scale_uv_stride){
+        for (int i = 0; i < 8; i++, U_row += scale_uv_stride, V_row += scale_uv_stride) {
             u_rows[i] = std::min(U_row, scale_U_max);
             v_rows[i] = std::min(V_row, scale_V_max);
         }
 
-        JSAMPARRAY rows[] = { y_rows, u_rows, v_rows };
+        JSAMPARRAY rows[] = {y_rows, u_rows, v_rows};
         jpeg_write_raw_data(&cinfo, rows, 16);
     }
 
@@ -506,10 +497,18 @@ void MjpegEncoder::encodeThread(int num) {
     jpeg_create_compress(&cinfoPrev);
     typedef std::chrono::duration<float, std::milli> duration;
 
-    duration encode_time(0);
-    uint32_t frames = 0;
+    duration buffer_time(0);
+    duration encoding_time(0);
+    duration scaling_time(0);
+    duration output_time(0);
+    duration total_time(0);
 
     EncodeItem encode_item;
+
+
+//    uint8_t *encoded_buffer = (uint8_t *) malloc(options_->crop_width * options_->crop_height);
+//    uint8_t *encoded_prev_buffer = (uint8_t *) malloc(options_->scale_width * options_->scale_height);
+//        uint8_t *exif_buffer = nullptr;
 
     while (true) {
         {
@@ -517,10 +516,6 @@ void MjpegEncoder::encodeThread(int num) {
             while (true) {
                 using namespace std::chrono_literals;
                 if (abort_) {
-                    if (frames && options_->verbose) {
-                        std::cerr << "Encode " << frames << " frames, average time "
-                                  << encode_time.count() * 1000 / frames << std::endl;
-                    }
                     jpeg_destroy_compress(&cinfoMain);
                     return;
                 }
@@ -534,28 +529,35 @@ void MjpegEncoder::encodeThread(int num) {
             }
         }
 
-        // Encode the buffers (and generate an accompanying preview and exif)
         uint8_t *encoded_buffer = nullptr;
         uint8_t *encoded_prev_buffer = nullptr;
-        uint8_t *exif_buffer = nullptr;
+
         size_t buffer_len = 0;
         size_t buffer_prev_len = 0;
-        size_t exif_buffer_len = 0;
+//        size_t exif_buffer_len = 0;
 
+        auto start_buffer_time = std::chrono::high_resolution_clock::now();
         {
-            createBuffer(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
+            createBuffer(cinfoMain, encode_item, num);
+            buffer_time = (std::chrono::high_resolution_clock::now() - start_buffer_time);
 
-            auto start_time = std::chrono::high_resolution_clock::now();
-            if (!options_->skip_4k){
-                encodeJPEG(cinfoMain, encode_item, encoded_buffer, buffer_len, num);
+            auto start_encoding_time = std::chrono::high_resolution_clock::now();
+            if (!options_->skip_4k) {
+                encodeJPEG(cinfoMain, encoded_buffer, buffer_len, num);
             }
-            if (!options_->skip_2k){
-                encodeDownsampleJPEG(cinfoPrev, encode_item, encoded_prev_buffer, buffer_prev_len, num);
-            }
-            encode_time = (std::chrono::high_resolution_clock::now() - start_time);
+            encoding_time = (std::chrono::high_resolution_clock::now() - start_encoding_time);
 
+            auto start_scaling_time = std::chrono::high_resolution_clock::now();
+            if (!options_->skip_2k) {
+                encodeDownsampleJPEG(cinfoPrev, encoded_prev_buffer, buffer_prev_len, num);
+            }
+            scaling_time = (std::chrono::high_resolution_clock::now() - start_scaling_time);
         }
-        frames += 1;
+
+        if (options_->verbose) {
+            frame_second_ += 1;
+        }
+
 
         // Don't return buffers until the output thread as that's where they're
         // in order again.
@@ -563,25 +565,32 @@ void MjpegEncoder::encodeThread(int num) {
         // application can take its time with the data without blocking the
         // encode process.
 
-        OutputItem output_item = {encoded_buffer,
-                                  buffer_len,
-                                  encoded_prev_buffer,
-                                  buffer_prev_len,
-                                  exif_buffer,
-                                  exif_buffer_len,
-                                  encode_item.timestamp_us,
-                                  encode_item.index};
-
+        auto start_output_time = std::chrono::high_resolution_clock::now();
         input_done_callback_(nullptr);
-        output_ready_callback_(output_item.mem,
-                               output_item.bytes_used,
-                               output_item.preview_mem,
-                               output_item.preview_bytes_used,
-                               output_item.timestamp_us,
+
+
+        output_ready_callback_(encoded_buffer,
+                               buffer_len,
+                               encoded_prev_buffer,
+                               buffer_prev_len,
+                               encode_item.timestamp_us,
                                true);
 
-        free(output_item.mem);
-        free(output_item.preview_mem);
+        output_time = (std::chrono::high_resolution_clock::now() - start_output_time);
+        total_time = (std::chrono::high_resolution_clock::now() - start_buffer_time);
+
+        if (options_->verbose) {
+            std::cout << "Frame processed in: " << total_time.count()
+                      << " buffer: " << buffer_time.count()
+                      << " 4k: " << encoding_time.count()
+                      << " 2k: " << scaling_time.count()
+                      << " out: " << output_time.count()
+                      << std::endl;
+        }
+
+
+        free(encoded_buffer);
+        free(encoded_prev_buffer);
 
 //        stat_mutex_.lock();
 //        std::cout << "stat_mutex_ lock in ++"  << std::endl;
@@ -598,8 +607,8 @@ void MjpegEncoder::outputThread() {
     if (options_->verbose) {
         while (true) {
             {
-                std::this_thread::sleep_for (std::chrono::seconds(1));
-                std::cout << "Frame / sec: " << frame_second_  << std::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::cout << "Frame / sec: " << frame_second_ << std::endl;
                 frame_second_ = 0;
             }
         }

@@ -235,7 +235,7 @@ void FileOutput::previewWrapAndWrite(void *mem, size_t size, struct timeval *tim
   {
     if(fileManager_.canWrite(2))
     {
-      fileManager_.addFile(2, size, tempFileName);
+      fileManager_.addFile(2, size, fullFileName);
       try
       {
         if(writeTempFile_)

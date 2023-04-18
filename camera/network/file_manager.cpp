@@ -66,7 +66,7 @@ void FileManager::initVars(bool verbose,
     maxUsedSizeThresh_[ii] = maxUsedSizeThresh[ii];
     if(directory_[ii] != "")
     {
-        accountForExistingFiles(ii);
+         accountForExistingFiles(ii);
     }
   }
  	
