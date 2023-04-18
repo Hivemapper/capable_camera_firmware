@@ -554,11 +554,6 @@ void MjpegEncoder::encodeThread(int num) {
             scaling_time = (std::chrono::high_resolution_clock::now() - start_scaling_time);
         }
 
-        if (options_->verbose) {
-            frame_second_ += 1;
-        }
-
-
         // Don't return buffers until the output thread as that's where they're
         // in order again.
         // We push this encoded buffer to another thread so that our
@@ -595,7 +590,7 @@ void MjpegEncoder::encodeThread(int num) {
 //        std::cout << "stat_mutex_ lock in ++"  << std::endl;
         if (options_->verbose) {
         stat_mutex_.lock();
-            frame_second_ += 1;
+            frame_second_ ++;
         stat_mutex_.unlock();
         }
 //        std::cout << "stat_mutex_ unlock in ++"  << std::endl;
