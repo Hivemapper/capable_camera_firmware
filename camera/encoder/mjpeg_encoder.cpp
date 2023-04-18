@@ -592,12 +592,12 @@ void MjpegEncoder::encodeThread(int num) {
         free(encoded_buffer);
         free(encoded_prev_buffer);
 
-//        stat_mutex_.lock();
 //        std::cout << "stat_mutex_ lock in ++"  << std::endl;
         if (options_->verbose) {
+        stat_mutex_.lock();
             frame_second_ += 1;
+        stat_mutex_.unlock();
         }
-//        stat_mutex_.unlock();
 //        std::cout << "stat_mutex_ unlock in ++"  << std::endl;
     }
 }
@@ -608,8 +608,10 @@ void MjpegEncoder::outputThread() {
         while (true) {
             {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
+                stat_mutex_.lock();
                 std::cout << "Frame / sec: " << frame_second_ << std::endl;
                 frame_second_ = 0;
+                stat_mutex_.unlock();
             }
         }
     }
