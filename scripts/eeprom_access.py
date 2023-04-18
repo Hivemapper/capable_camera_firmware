@@ -87,7 +87,7 @@ class EEPROM_endpoint:
       val = writeBuff[ii]
       if not self.test:
         self.writeByte(val, bank, addr)
-      time.sleep(0.004)
+      time.sleep(0.005)
     self.addLogEntry("WRITE", self.bankList[bank].devAddr, startAddr,
                      length, writeBuff)
 
