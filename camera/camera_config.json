@@ -13,7 +13,7 @@
     "encoding": {
       "fps": 10,
       "width": 4056,
-      "height": 3040,
+      "height": 2048,
       "codec": "mjpeg",
       "quality": 50,
       "scale_quality":75,

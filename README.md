@@ -1,2 +1,2 @@
 
-#capable_camera_firmware
+capable_camera_firmware
