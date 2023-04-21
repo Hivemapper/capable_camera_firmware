@@ -11,7 +11,13 @@
 #include "video_options.hpp"
 #include "../encoder/encoder.hpp"
 
-typedef std::function<void(void *, size_t, void *, size_t, int64_t, bool)> EncodeOutputReadyCallback;
+typedef std::function<void(
+        void *, size_t,
+        void *, size_t,
+        void *, size_t,
+        int64_t,
+        bool
+)> EncodeOutputReadyCallback;
 
 class LibcameraEncoder : public LibcameraApp
 {

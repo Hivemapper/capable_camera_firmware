@@ -60,7 +60,7 @@ static void execute_stream(LibcameraEncoder &app, VideoOptions *options)
 {
 
   std::unique_ptr<Output> output = std::unique_ptr<Output>(Output::Create(options));
-  app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), _1, _2, _3, _4, _5, _6));
+  app.SetEncodeOutputReadyCallback(std::bind(&Output::OutputReady, output.get(), _1, _2, _3, _4, _5, _6, _7, _8));
   app.StartEncoder();
 
   app.OpenCamera();

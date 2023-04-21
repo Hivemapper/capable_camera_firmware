@@ -37,7 +37,7 @@ struct Options
        "Read the options from a file. If no filename is specified, default to config.txt. "
        "In case of duplicate options, the ones provided on the command line will be used. "
        "Note that the config file must only contain the long form options.")
-      ("netconfig,n", value<bool>(&netconfig)->default_value(false)->implicit_value(true), 
+      ("netconfig,n", value<bool>(&netconfig)->default_value(false)->implicit_value(true),
         "Connect to the network endpoint of the camera firmware and listen for configuration "
         "changes over the network")
       ("info-text", value<std::string>(&info_text)->default_value("#%frame (%fps fps) exp %exp ag %ag dg %dg"),
@@ -61,6 +61,8 @@ struct Options
        "Set the downsample output file directory")
       ("gpsLockCheckDir", value<std::string>(&gpsLockCheckDir)->default_value(""),
        "Set the check directory for the GPS LOCK ACQUIRED file")
+       ("latestChkFileDir", value<std::string>(&latestChkFileDir)->default_value("/mnt/data/pic/"),
+           "Set the check directory for the latest picture")
       ("prefix", value<std::string>(&prefix)->default_value(""),
        "Set the beginning of output file names if provided")
       ("minfreespace", value<std::uint64_t>(&minfreespace)->default_value(268435456),
@@ -74,7 +76,7 @@ struct Options
        "Default to 256MiB. Set to zero for unlimited")
       ("maxusedspace2", value<std::uint64_t>(&maxusedspace_2nd)->default_value(0),
        "Maximum amount of space photos can occupy in removable media, otherwise delete them."
-       "Default to 2GiB. Set to zero for unlimited")        
+       "Default to 2GiB. Set to zero for unlimited")
       ("post-process-file", value<std::string>(&post_process_file),
        "Set the file name for configuring the post-processing")
       ("rawfull", value<bool>(&rawfull)->default_value(false)->implicit_value(true),
@@ -142,6 +144,7 @@ struct Options
   std::string output_2nd;
   std::string downsampleStreamDir;
   std::string gpsLockCheckDir;
+  std::string latestChkFileDir;
   uint64_t minfreespace;
   uint64_t maxusedspace;
   uint64_t minfreespace_2nd;
@@ -196,7 +199,7 @@ protected:
   void json_manage_cb_cfg(nlohmann::json color_cfg);
   void json_manage_exp_cfg(nlohmann::json exposure_cfg);
   void json_manage_cam_cfg(nlohmann::json camera_cfg);
-  void json_manage_adj_cfg(nlohmann::json adjustment_cfg); 
+  void json_manage_adj_cfg(nlohmann::json adjustment_cfg);
 
 private:
   bool hflip_;

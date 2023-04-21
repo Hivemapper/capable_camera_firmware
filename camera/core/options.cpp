@@ -56,6 +56,10 @@ void Options::json_manage_fs_cfg(nlohmann::json fileinfo_cfg)
   {
     gpsLockCheckDir = fileinfo_cfg.at("gpsLockCheckDir");
   }
+  if(fileinfo_cfg.contains("latestChkFileDir"))
+  {
+    latestChkFileDir = fileinfo_cfg.at("latestChkFileDir");
+  }
   if(fileinfo_cfg.contains("minfreespace"))
   {
       minfreespace = fileinfo_cfg.at("minfreespace");
