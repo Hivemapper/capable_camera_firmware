@@ -143,7 +143,7 @@ void FileOutput::outputBuffer(void *mem,
         size_t latestSize = primFileName.size();
         fd = open(latestFileName_.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
         if ((ret = write(fd, primFileName.c_str(), latestSize)) < 0) {
-            throw std::runtime_error("failed to write data");
+            throw std::runtime_error("failed to write latest data in file: " + latestFileName_);
         }
         close(fd);
     }
@@ -222,6 +222,11 @@ void FileOutput::wrapAndWrite(void *mem, std::string fullFileName, size_t size,
 void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size,
                            void *exifMem, size_t exifSize)
 {
+
+    if (options_->verbose) {
+        std::cout << "writeFile: " << fullFileName << " exifSize: " << exifMem << std::endl;
+    }
+
     //open file name and assign fd
     size_t totalWritten = 0;
     int nowWritten = 0;
@@ -232,6 +237,9 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size,
     //if we have an exif header then shift the writerIndex by 20
     if(exifSize > 0)
     {
+        if (options_->verbose) {
+            std::cout << "writing exif: " << std::endl;
+        }
         writerIndex += 20;
         size -= 20;
 
@@ -258,7 +266,7 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size,
     {
         nowWritten = write(fd, writerIndex, size - totalWritten);
         if(nowWritten < 0){
-            throw std::runtime_error("failed to write data");
+            throw std::runtime_error("failed to write data2");
         }else if (nowWritten == 0){
             std::cerr << "no data written..." << std::endl;
         }
