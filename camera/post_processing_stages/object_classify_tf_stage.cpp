@@ -24,7 +24,7 @@ public:
 	// The model we use expects 224x224 images.
 	ObjectClassifyTfStage(LibcameraApp *app) : TfStage(app, 224, 224)
 	{
-		config_ = std::make_unique<ObjectClassifyTfConfig>();
+        config_ = std::make_unique<ObjectClassifyTfConfig>();
 	}
 	char const *Name() const override { return NAME; }
 

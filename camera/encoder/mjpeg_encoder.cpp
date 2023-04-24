@@ -306,9 +306,6 @@ void MjpegEncoder::CreateExifData(EncodeItem &source, uint8_t *&exif_buffer, siz
             free(exif_buffer);
         throw;
     }
-    if (options_->verbose) {
-        std::cout << "Generated " << exif_len << " EXIF bytes" << std::endl;
-    }
 }
 
 void MjpegEncoder::createBuffer(struct jpeg_compress_struct &cinfo, EncodeItem &item, int num) {

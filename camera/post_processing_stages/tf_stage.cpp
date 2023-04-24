@@ -36,14 +36,19 @@ void TfStage::initialise()
 
 	tflite::ops::builtin::BuiltinOpResolver resolver;
 	tflite::InterpreterBuilder(*model_, resolver)(&interpreter_);
-	if (!interpreter_)
-		throw std::runtime_error("TfStage: Failed to construct interpreter");
+	if (!interpreter_){
+        std::cerr << "TfStage: TfStage: Failed to construct interpreter" << std::endl;
+        throw std::runtime_error("TfStage: Failed to construct interpreter");
+    }
 
 	if (config_->number_of_threads != -1)
 		interpreter_->SetNumThreads(config_->number_of_threads);
 
-	if (interpreter_->AllocateTensors() != kTfLiteOk)
-		throw std::runtime_error("TfStage: Failed to allocate tensors");
+	if (interpreter_->AllocateTensors() != kTfLiteOk){
+
+        std::cerr << "TfStage: Failed to allocate tensors" << std::endl;
+        throw std::runtime_error("TfStage: Failed to allocate tensors");
+    }
 
 	// Make an attempt to verify that the model expects this size of input.
 	int input = interpreter_->inputs()[0];
@@ -53,12 +58,18 @@ void TfStage::initialise()
 		check *= sizeof(uint8_t);
 	else if (interpreter_->tensor(input)->type == kTfLiteFloat32)
 		check *= sizeof(float);
-	else
-		throw std::runtime_error("TfStage: Input tensor data type not supported");
+	else{
+        std::cerr << "TfStage: Input tensor data type not supported" << std::endl;
+        throw std::runtime_error("TfStage: Input tensor data type not supported");
+    }
 
 	// Causes might include loading the wrong model.
-	if (check != size)
-		throw std::runtime_error("TfStage: Input tensor size mismatch");
+	if (check != size){
+        std::cerr << "TfStage: Input tensor size mismatch" << check << size << std::endl;
+        throw std::runtime_error("TfStage: Input tensor size mismatch");
+    }
+
+    std::cerr << "TfStage: initialise done!" << config_->model_file << std::endl;
 }
 
 void TfStage::Configure()
@@ -95,8 +106,10 @@ void TfStage::Configure()
 
 bool TfStage::Process(CompletedRequestPtr &completed_request)
 {
-	if (!lores_stream_)
-		return false;
+	if (!lores_stream_){
+        return false;
+    }
+
 
 	{
 		std::unique_lock<std::mutex> lck(future_mutex_);

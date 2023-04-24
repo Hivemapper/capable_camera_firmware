@@ -223,10 +223,6 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size,
                            void *exifMem, size_t exifSize)
 {
 
-    if (options_->verbose) {
-        std::cout << "writeFile: " << fullFileName << " exifSize: " << exifMem << std::endl;
-    }
-
     //open file name and assign fd
     size_t totalWritten = 0;
     int nowWritten = 0;
@@ -237,9 +233,6 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size,
     //if we have an exif header then shift the writerIndex by 20
     if(exifSize > 0)
     {
-        if (options_->verbose) {
-            std::cout << "writing exif: " << std::endl;
-        }
         writerIndex += 20;
         size -= 20;
 
@@ -275,10 +268,4 @@ void FileOutput::writeFile(std::string fullFileName, void *mem, size_t size,
     }
     close(fd);
 
-    if (verbose_)
-    {
-        size_t fullTotal = 6 + exifSize + totalWritten;
-        std::cerr << "writing " << fullTotal << " bytes to ";
-        std::cerr << fullFileName << std::endl;
-    }
 }

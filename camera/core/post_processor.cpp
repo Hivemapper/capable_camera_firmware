@@ -7,10 +7,10 @@
 
 #include <iostream>
 
-#include "core/libcamera_app.hpp"
-#include "core/post_processor.hpp"
+#include "./libcamera_app.hpp"
+#include "./post_processor.hpp"
 
-#include "post_processing_stages/post_processing_stage.hpp"
+#include "../post_processing_stages/post_processing_stage.hpp"
 
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -25,13 +25,17 @@ PostProcessor::~PostProcessor()
 
 void PostProcessor::Read(std::string const &filename)
 {
-	boost::property_tree::ptree root;
+    std::cout << "PostProcessor::Read: " << filename << std::endl;
+    boost::property_tree::ptree root;
 	boost::property_tree::read_json(filename, root);
 	for (auto const &key_and_value : root)
 	{
+        std::cout << "PostProcessor::key_and_value.first: " << key_and_value.first.c_str() << std::endl;
 		PostProcessingStage *stage = createPostProcessingStage(key_and_value.first.c_str());
 		if (stage)
 		{
+            std::cout << "PostProcessor::found stage" << std::endl;
+
 			stage->Read(key_and_value.second);
 			stages_.push_back(StagePtr(stage));
 		}
@@ -80,7 +84,8 @@ void PostProcessor::Process(CompletedRequestPtr &request)
 {
 	if (stages_.empty())
 	{
-		callback_(request);
+        std::cout << "empty post processor stages" << std::endl;
+        callback_(request);
 		return;
 	}
 

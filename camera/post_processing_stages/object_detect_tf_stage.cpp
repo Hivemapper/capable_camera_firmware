@@ -5,8 +5,8 @@
  * object_detect_tf_stage.cpp - object detector
  */
 
-#include "object_detect.hpp"
-#include "tf_stage.hpp"
+#include "./object_detect.hpp"
+#include "./tf_stage.hpp"
 
 using Rectangle = libcamera::Rectangle;
 
