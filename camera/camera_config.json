@@ -2,11 +2,11 @@
   "recording": {
     "directory": {
       "prefix": "",
-      "output": "",
+      "output": "/mnt/data/pic/",
       "maxusedspace": 21474836480,
       "minfreespace": 64000000,
       "minfreespace2": 32000000,
-      "downsampleStreamDir": "/mnt/data/pic/"
+      "downsampleStreamDir": ""
     }
   },
   "camera": {
@@ -16,12 +16,13 @@
       "height": 2048,
       "codec": "mjpeg",
       "quality": 50,
-      "scale_quality":75,
+      "skip_2k": true,
+      "scale_quality": 75,
       "scale_width": 2028,
       "scale_height": 1024,
       "crop_width": 4056,
       "crop_height": 2048,
-      "crop_offset_from_top":0
+      "crop_offset_from_top": 0
     },
     "adjustment": {
       "hflip": false,
