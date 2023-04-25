@@ -2,11 +2,11 @@
   "recording": {
     "directory": {
       "prefix": "",
-      "output": "/mnt/data/pic/",
+      "output": "",
       "maxusedspace": 21474836480,
       "minfreespace": 64000000,
       "minfreespace2": 32000000,
-      "downsampleStreamDir": ""
+      "downsampleStreamDir": "/tmp/recording/pic"
     }
   },
   "camera": {
@@ -16,7 +16,6 @@
       "height": 2048,
       "codec": "mjpeg",
       "quality": 50,
-      "skip_2k": true,
       "scale_quality": 75,
       "scale_width": 2028,
       "scale_height": 1024,
